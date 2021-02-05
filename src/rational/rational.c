@@ -12,7 +12,6 @@ $Revision$
 #define Py_LIMITED_API 0x03070000
 
 #include <Python.h>
-#include "enumobject.h"
 #include <assert.h>
 #include <math.h>
 #include <errno.h>
@@ -79,6 +78,7 @@ static PyObject *Py2pow64 = NULL;
 
 static PyObject *PyHASH_MODULUS = NULL;
 static PyObject *PyHASH_MODULUS_2 = NULL;
+static PyObject *PyHASH_INF = NULL;
 
 /*============================================================================
 * Rational type
@@ -739,7 +739,7 @@ Rational_hash(RationalObject *self) {
                                                   PyHASH_MODULUS_2,
                                                   PyHASH_MODULUS));
     if (PyObject_RichCompareBool(inv_den, PyZERO, Py_EQ))
-        res = _PyHASH_INF;
+        res = PyHASH_INF;
     else {
         // Optimized implementation from Python 3.9
         ASSIGN_AND_CHECK_NULL(abs_num, PyNumber_Absolute(self->numerator));
@@ -1783,6 +1783,16 @@ rational_exec(PyObject *module) {
     PyObject *math = NULL;
     ASSIGN_AND_CHECK_NULL(math, PyImport_ImportModule("math"));
     ASSIGN_AND_CHECK_NULL(PyNumber_gcd, PyObject_GetAttrString(math, "gcd"));
+    /* Import from sys */
+    PyObject *sys = NULL;
+    PyObject *hash_info = NULL;
+    ASSIGN_AND_CHECK_NULL(sys, PyImport_ImportModule("sys"));
+    ASSIGN_AND_CHECK_NULL(hash_info,
+                          PyObject_GetAttrString(sys, "hash_info"));
+    ASSIGN_AND_CHECK_NULL(PyHASH_MODULUS,
+                          PyObject_GetAttrString(hash_info, "modulus"));
+    ASSIGN_AND_CHECK_NULL(PyHASH_INF,
+                          PyObject_GetAttrString(hash_info, "inf"));
     /* PyLong methods */
     ASSIGN_AND_CHECK_NULL(PyLong_bit_length,
                           PyObject_GetAttrString((PyObject *)&PyLong_Type,
@@ -1794,14 +1804,16 @@ rational_exec(PyObject *module) {
                           PyObject_GetAttrString(rounding, "Rounding"));
 
     /* Init global Python constants */
-    PyZERO = PyLong_FromLong(0L);
-    PyONE = PyLong_FromLong(1L);
-    PyTEN = PyLong_FromLong(10L);
-    Py64 = PyLong_FromLong(64L);
-    PyUInt64Max = PyLong_FromUnsignedLongLong(UINT64_MAX);
-    Py2pow64 = PyNumber_Lshift(PyONE, Py64);
-    PyHASH_MODULUS = PyLong_FromLongLong(_PyHASH_MODULUS);
-    PyHASH_MODULUS_2 = PyLong_FromLongLong(_PyHASH_MODULUS - 2);
+    ASSIGN_AND_CHECK_NULL(PyZERO, PyLong_FromLong(0L));
+    ASSIGN_AND_CHECK_NULL(PyONE, PyLong_FromLong(1L));
+    ASSIGN_AND_CHECK_NULL(PyTEN, PyLong_FromLong(10L));
+    ASSIGN_AND_CHECK_NULL(Py64, PyLong_FromLong(64L));
+    ASSIGN_AND_CHECK_NULL(PyUInt64Max,
+                          PyLong_FromUnsignedLongLong(UINT64_MAX));
+    ASSIGN_AND_CHECK_NULL(Py2pow64, PyNumber_Lshift(PyONE, Py64));
+    ASSIGN_AND_CHECK_NULL(PyHASH_MODULUS_2,
+                          PyLong_FromLongLong(PyLong_AsLongLong(PyHASH_MODULUS)
+                          - 2));
 
     /* Add types */
     ASSIGN_AND_CHECK_NULL(RationalType,
@@ -1838,6 +1850,9 @@ ERROR:
     Py_CLEAR(Py64);
     Py_CLEAR(PyUInt64Max);
     Py_CLEAR(Py2pow64);
+    Py_CLEAR(PyHASH_MODULUS);
+    Py_CLEAR(PyHASH_MODULUS_2);
+    Py_CLEAR(PyHASH_INF);
     rc = -1;
 
 CLEAN_UP:
@@ -1845,6 +1860,8 @@ CLEAN_UP:
     Py_CLEAR(fractions);
     Py_CLEAR(decimal);
     Py_CLEAR(math);
+    Py_CLEAR(sys);
+    Py_CLEAR(hash_info);
     Py_CLEAR(rounding);
     return rc;
 }
