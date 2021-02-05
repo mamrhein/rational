@@ -141,6 +141,24 @@ large_adj_ratio = Fraction(round(large_coeff, large_adj - large_prec),
                            10 ** large_prec)
 
 
+@pytest.mark.parametrize(("prec", "num", "den"),
+                         ((compact_prec, compact_ratio.numerator,
+                           compact_ratio.denominator),
+                          (small_prec, -small_ratio.numerator,
+                           small_ratio.denominator),
+                          (large_prec, large_ratio.numerator,
+                           -large_ratio.denominator),
+                          (3, 8290, -10000)),
+                         ids=("compact", "small", "large", "frac-only"))
+def test_rational_from_ratio_dflt_prec(prec, num, den):
+    rn = Rational(num, den)
+    assert isinstance(rn, Rational)
+    # assert rn.precision == prec
+    f = Fraction(num, den)
+    assert rn.numerator == f.numerator
+    assert rn.denominator == f.denominator
+
+
 @pytest.mark.parametrize(("value", "prec", "ratio"),
                          ((compact_str, compact_prec, compact_ratio),
                           (small_str, small_prec, small_ratio),
@@ -157,37 +175,37 @@ def test_rational_from_str_dflt_prec(value, prec, ratio):
     assert rn.as_fraction() == ratio
 
 
-# @pytest.mark.parametrize(("value", "prec", "ratio"),
-#                          ((compact_str, compact_adj, compact_adj_ratio),
-#                           (small_str, small_adj, small_adj_ratio),
-#                           (large_str, large_adj, large_adj_ratio),
-#                           ("27.81029", IntWrapper(3), Fraction(2781, 100)),
-#                           (".829", 2, Fraction(83, 100)),
-#                           (".726", 0, 1)),
-#                          ids=("compact", "small", "large", "Integral as prec",
-#                               "frac-only", "carry-over"))
-# def test_rational_from_str_adj(value, prec, ratio):
-#     rn = Rational(value, prec)
-#     assert isinstance(rn, Rational)
-#     assert rn.precision == prec
-#     assert rn.as_fraction() == ratio
+@pytest.mark.parametrize(("value", "prec", "ratio"),
+                         ((compact_str, compact_adj, compact_adj_ratio),
+                          (small_str, small_adj, small_adj_ratio),
+                          (large_str, large_adj, large_adj_ratio),
+                          ("27.81029", IntWrapper(3), Fraction(2781, 100)),
+                          (".829", 2, Fraction(83, 100)),
+                          (".726", 0, 1)),
+                         ids=("compact", "small", "large", "Integral as prec",
+                              "frac-only", "carry-over"))
+def test_rational_from_str_adj(value, prec, ratio):
+    rn = Rational(value, precision=prec)
+    assert isinstance(rn, Rational)
+    assert rn.precision == prec
+    assert rn.as_fraction() == ratio
 
 
-# @pytest.mark.parametrize(("value", "prec", "ratio"),
-#                          ((compact_str, compact_prec, compact_ratio),
-#                           (small_str, small_prec, small_ratio),
-#                           (large_str, large_prec, large_ratio),
-#                           (" .829  ", 3, Fraction(829, 1000)),
-#                           ("\t -00000000 ", 0, 0),
-#                           ("\t -000.00000", 5, 0)),
-#                          ids=("compact", "small", "large", "frac-only",
-#                               "zeros", "zeros-with-point"))
-# def test_rational_from_str_no_adj(value, prec, ratio):
-#     prec *= 3
-#     rn = Rational(value, prec)
-#     assert isinstance(rn, Rational)
-#     assert rn.precision == prec
-#     assert rn.as_fraction() == ratio
+@pytest.mark.parametrize(("value", "prec", "ratio"),
+                         ((compact_str, compact_prec, compact_ratio),
+                          (small_str, small_prec, small_ratio),
+                          (large_str, large_prec, large_ratio),
+                          (" .829  ", 3, Fraction(829, 1000)),
+                          ("\t -00000000 ", 0, 0),
+                          ("\t -000.00000", 5, 0)),
+                         ids=("compact", "small", "large", "frac-only",
+                              "zeros", "zeros-with-point"))
+def test_rational_from_str_no_adj(value, prec, ratio):
+    prec *= 3
+    rn = Rational(value, precision=prec)
+    assert isinstance(rn, Rational)
+    assert rn.precision == prec
+    assert rn.as_fraction() == ratio
 
 
 @pytest.mark.parametrize("value", ["\u1811\u1817.\u1814", "\u0f20.\u0f24"],
