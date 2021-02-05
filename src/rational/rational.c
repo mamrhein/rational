@@ -1799,7 +1799,8 @@ rational_exec(PyObject *module) {
                                                  "bit_length"));
     /* Import from rounding */
     PyObject *rounding = NULL;
-    ASSIGN_AND_CHECK_NULL(rounding, PyImport_ImportModule(".rounding"));
+    ASSIGN_AND_CHECK_NULL(rounding,
+                          PyImport_ImportModule("rational.rounding"));
     ASSIGN_AND_CHECK_NULL(Rounding,
                           PyObject_GetAttrString(rounding, "Rounding"));
 
