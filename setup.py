@@ -21,6 +21,7 @@ ext_modules = [
         extra_compile_args=extra_compile_args,
         # extra_link_args="",
         language='c',
+        py_limited_api=True,
         ),
     ]
 
@@ -32,7 +33,7 @@ setup(
     author="Michael Amrhein",
     author_email="michael@adrhinum.de",
     url="https://github.com/mamrhein/rational",
-    description="Decimal numbers with fixed-point arithmetic",
+    description="Rational number arithmetic",
     long_description=long_description,
     long_description_content_type="text/markdown",
     package_dir={'': 'src'},
