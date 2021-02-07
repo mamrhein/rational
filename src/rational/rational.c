@@ -13,9 +13,7 @@ $Revision$
 
 #include <Python.h>
 #include <assert.h>
-#include <math.h>
 #include <errno.h>
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -26,9 +24,6 @@ $Revision$
 #include "rn_pyint_quot.h"
 #include "rn_u64_quot.h"
 
-// module name
-#define MOD_NAME "rational"
-static PyObject *PY_MOD_NAME = NULL;
 
 // error handling
 
@@ -1739,7 +1734,7 @@ static PyType_Slot Rational_type_slots[] = {
 };
 
 static PyType_Spec RationalType_spec = {
-    "Rational",                             /* name */
+    "rational.Rational",                    /* name */
     sizeof(RationalObject),                 /* basicsize */
     0,                                      /* itemsize */
     0,                                      /* flags */
@@ -1819,8 +1814,6 @@ PyDoc_STRVAR(rational_doc, "Rational number arithmetic.");
 static int
 rational_exec(PyObject *module) {
     int rc = 0;
-    /* Module name */
-    ASSIGN_AND_CHECK_NULL(PY_MOD_NAME, PyUnicode_FromString(MOD_NAME));
     /* Import from numbers */
     PyObject *numbers = NULL;
     ASSIGN_AND_CHECK_NULL(numbers, PyImport_ImportModule("numbers"));
@@ -1882,10 +1875,7 @@ rational_exec(PyObject *module) {
     /* Add types */
     ASSIGN_AND_CHECK_NULL(RationalType,
                           (PyTypeObject *)PyType_FromSpec(&RationalType_spec));
-    PyObject_SetAttrString((PyObject *)RationalType,
-                           "__module__", PY_MOD_NAME);
     PYMOD_ADD_OBJ(module, "Rational", (PyObject *)RationalType);
-    //PYMOD_ADD_OBJ(module, Rounding_name, Rounding);
 
     /* Register RationalType as Rational */
     ASSIGN_AND_CHECK_NULL(RationalType,
@@ -1896,7 +1886,6 @@ rational_exec(PyObject *module) {
     goto CLEAN_UP;
 
 ERROR:
-    Py_CLEAR(PY_MOD_NAME);
     Py_CLEAR(Number);
     Py_CLEAR(Complex);
     Py_CLEAR(Real);
@@ -1937,11 +1926,10 @@ static PyModuleDef_Slot rational_slots[] = {
 
 static struct PyModuleDef rational_module = {
     PyModuleDef_HEAD_INIT,              /* m_base */
-    MOD_NAME,                           /* m_name */
+    "rational",                         /* m_name */
     rational_doc,                       /* m_doc */
     0,                                  /* m_size */
-    //rational_methods,                   /* m_methods */
-    NULL,                   /* m_methods */
+    NULL,                               /* m_methods */
     rational_slots,                     /* m_slots */
     NULL,                               /* m_traverse */
     NULL,                               /* m_clear */
