@@ -143,7 +143,7 @@ large_adj_ratio = Fraction(round(large_coeff, large_adj - large_prec),
 
 @pytest.mark.parametrize(("num", "den"),
                          ((compact_ratio.numerator, compact_ratio.denominator),
-                          (-small_ratio.numerator, small_ratio.denominator),
+                          (small_ratio.numerator, small_ratio.denominator),
                           (large_ratio.numerator, -large_ratio.denominator),
                           (8290, -10000)),
                          ids=("compact", "small", "large", "frac-only"))
@@ -154,6 +154,23 @@ def test_rational_from_ratio_dflt_prec(num, den):
     f = Fraction(num, den)
     assert rn.numerator == f.numerator
     assert rn.denominator == f.denominator
+
+
+@pytest.mark.parametrize(("num", "den", "prec", "ratio"),
+                         ((compact_ratio.numerator, compact_ratio.denominator,
+                           compact_adj, compact_adj_ratio),
+                          (small_ratio.numerator, small_ratio.denominator,
+                           small_adj, small_adj_ratio),
+                          (large_ratio.numerator, -large_ratio.denominator,
+                           large_adj, -large_adj_ratio),
+                          (8290, -10000, 2, Fraction(-83, 100))),
+                         ids=("compact", "small", "large", "frac-only"))
+def test_rational_from_ratio_adj_prec(num, den, prec, ratio):
+    rn = Rational(num, den, precision=prec)
+    assert isinstance(rn, Rational)
+    assert rn.precision == prec
+    assert rn.numerator == ratio.numerator
+    assert rn.denominator == ratio.denominator
 
 
 @pytest.mark.parametrize(("value", "prec", "ratio"),
