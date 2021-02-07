@@ -141,19 +141,16 @@ large_adj_ratio = Fraction(round(large_coeff, large_adj - large_prec),
                            10 ** large_prec)
 
 
-@pytest.mark.parametrize(("prec", "num", "den"),
-                         ((compact_prec, compact_ratio.numerator,
-                           compact_ratio.denominator),
-                          (small_prec, -small_ratio.numerator,
-                           small_ratio.denominator),
-                          (large_prec, large_ratio.numerator,
-                           -large_ratio.denominator),
-                          (3, 8290, -10000)),
+@pytest.mark.parametrize(("num", "den"),
+                         ((compact_ratio.numerator, compact_ratio.denominator),
+                          (-small_ratio.numerator, small_ratio.denominator),
+                          (large_ratio.numerator, -large_ratio.denominator),
+                          (8290, -10000)),
                          ids=("compact", "small", "large", "frac-only"))
-def test_rational_from_ratio_dflt_prec(prec, num, den):
+def test_rational_from_ratio_dflt_prec(num, den):
     rn = Rational(num, den)
     assert isinstance(rn, Rational)
-    # assert rn.precision == prec
+    assert rn.precision is None
     f = Fraction(num, den)
     assert rn.numerator == f.numerator
     assert rn.denominator == f.denominator
@@ -302,11 +299,11 @@ def test_rational_from_integral(value, ratio):
 @pytest.mark.parametrize(("value", "prec", "ratio"),
                          ((compact_coeff, compact_adj, compact_coeff),
                           (IntWrapper(328), 7, Fraction(328, 1)),
-                          (19, 12, 19),
+                          (1939000285, -7, 1940000000),
                           (small_coeff, small_adj, Fraction(small_coeff, 1)),
                           (large_coeff, large_adj, Fraction(large_coeff, 1)),
                           ),
-                         ids=("compact", "IntWrapper", "prec > 9", "small",
+                         ids=("compact", "IntWrapper", "prec < 0", "small",
                               "large",))
 def test_rational_from_integral_adj(value, prec, ratio):
     rn = Rational(value, precision=prec)
