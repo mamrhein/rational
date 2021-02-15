@@ -42,10 +42,6 @@ class Rational(numbers.Rational):
     @classmethod
     def from_decimal(cls: Type[Rational], d: RationalT) -> Rational:
         ...
-    @classmethod
-    def from_real(cls: Type[Rational], r: numbers.Real, exact: bool = ...) -> \
-            Rational:
-        ...
     @property
     def precision(self) -> Optional[int]:
         ...

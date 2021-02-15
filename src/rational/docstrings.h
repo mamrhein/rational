@@ -81,25 +81,6 @@ PyDoc_STRVAR(
     "    ValueError: `d` can not be converted to a :class:`Rational`.\n\n"
 );
 
-PyDoc_STRVAR(
-    RationalType_from_real_doc,
-    "Convert a finite Real number to a :class:`Rational`.\n\n"
-    "Args:\n"
-    "    r (`numbers.Real`): number to be converted to a :class:`Rational`\n"
-    "    exact (`bool`): `True` if `r` shall exactly be represented by\n"
-    "        the resulting :class:`Rational`\n\n"
-    "Returns:\n"
-    "    :class:`Rational` instance derived from `r`\n\n"
-    "Raises:\n"
-    "    TypeError: `r` is not an instance of `numbers.Real`.\n"
-    "    ValueError: `exact` is `True` and `r` can not exactly be converted\n"
-    "        to a :class:`Rational` with a precision <= `MAX_DEC_PRECISION`"
-    ".\n\n"
-    "If `exact` is `False` and `r` can not exactly be represented by a\n"
-    "`Rational` with a precision <= `MAX_DEC_PRECISION`, the result is\n"
-    "rounded to a precision = `MAX_DEC_PRECISION`.\n\n"
-);
-
 // Rational properties
 
 PyDoc_STRVAR(
