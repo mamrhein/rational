@@ -12,7 +12,9 @@ $Revision$
 #define RATIONAL_UINT128_MATH_NATIVE_H
 
 #include <assert.h>
+#include <math.h>
 #include <stdint.h>
+
 #include "uint64_math.h"
 
 // Large unsigned int
@@ -22,9 +24,14 @@ static const uint128_t UINT128_ZERO = 0ULL;
 static const uint128_t UINT128_MAX =
     ((uint128_t)UINT64_MAX << 64U) + UINT64_MAX;
 
+#define UINT128_10_POW_N_CUTOFF (2 * UINT64_10_POW_N_CUTOFF)
+
 /*****************************************************************************
 *  Macros
 *****************************************************************************/
+
+// properties
+#define U128_MAGNITUDE(x) ((int) log10((double) x))
 
 // byte assignment
 #define U128_RHS(lo, hi) (((uint128_t)(hi) << 64U) + (lo))
@@ -203,6 +210,11 @@ u128_eliminate_trailing_zeros(uint128_t *x, unsigned n_max) {
         n_trailing_zeros++;
     }
     return n_trailing_zeros;
+}
+
+static inline void
+u128_imul10_add_digit(uint128_t *accu, int digit) {
+    *accu = *accu * 10UL + digit;
 }
 
 #endif // RATIONAL_UINT128_MATH_H

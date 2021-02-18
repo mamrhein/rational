@@ -18,16 +18,16 @@ typedef int8_t rn_sign_t;
 #define RN_SIGN_POS 1
 
 // exponent of internal representation
-typedef int32_t rn_exp_t;
-#define RN_UNLIM_EXP INT32_MIN
-#define RN_MIN_EXP (INT32_MIN + 1)
-#define RN_MAX_EXP INT32_MAX
+typedef int16_t rn_exp_t;
+#define RN_MAX_EXP INT16_MAX
+#define RN_MIN_EXP (-INT16_MAX)
+#define RN_UNDEF_EXP INT16_MIN
 
-// number of decimal fractional digits (function param)
-typedef int32_t rn_prec_t;
-#define RN_UNLIM_PREC RN_UNLIM_EXP
-#define RN_MIN_PREC -RN_MAX_EXP
-#define RN_MAX_PREC -RN_MIN_EXP
+// number of decimal fractional digits
+typedef int16_t rn_prec_t;
+#define RN_UNLIM_PREC INT16_MAX
+#define RN_MAX_PREC 9999
+#define RN_MIN_PREC (-RN_MAX_PREC)
 
 // Python int numerator / denominator
 typedef struct pyint_quot {

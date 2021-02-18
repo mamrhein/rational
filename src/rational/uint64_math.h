@@ -35,6 +35,9 @@ $Revision$
 #define FLOOR(a, b) (((a) % (b)) < 0 ? (a) / (b) - 1 : (a) / (b))
 #define MOD(a, b) ((a) - FLOOR((a), (b)) * (b))
 
+// properties
+#define U64_MAGNITUDE(x) ((int) log10(x))
+
 /*****************************************************************************
 *  Functions
 *****************************************************************************/
@@ -88,8 +91,8 @@ static uint64_t U64_10_pows[20] = {
 };
 
 static inline uint64_t
-u64_10_pow_n(int exp) {
-    assert(exp >= 0 && exp <= UINT64_10_POW_N_CUTOFF);
+u64_10_pow_n(unsigned int exp) {
+    assert(exp <= UINT64_10_POW_N_CUTOFF);
     return U64_10_pows[exp];
 }
 

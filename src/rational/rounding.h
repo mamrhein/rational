@@ -14,6 +14,11 @@ $Revision$
 #include <Python.h>
 
 #include "common.h"
+#ifdef __SIZEOF_INT128__
+#include "uint128_math_native.h"
+#else
+#include "uint128_math.h"
+#endif // __int128
 
 
 enum RN_ROUNDING_MODE {
@@ -59,6 +64,16 @@ ERROR:
     Py_XDECREF(dflt);
     Py_XDECREF(val);
     return (enum RN_ROUNDING_MODE)rounding_mode;
+}
+
+static void
+u64_idiv_rounded(uint64_t *divident, const uint64_t *divisor, bool neg) {
+
+}
+
+static void
+u128_idiv_rounded(uint128_t *divident, const uint128_t *divisor, bool neg) {
+
 }
 
 #endif //RATIONAL_ROUNDING_H

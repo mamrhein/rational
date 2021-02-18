@@ -28,9 +28,15 @@ typedef struct uint128 {
 static const uint128_t UINT128_ZERO = {0, 0};
 static const uint128_t UINT128_MAX = {UINT64_MAX, UINT64_MAX};
 
+#define UINT128_10_POW_N_CUTOFF (2 * UINT64_10_POW_N_CUTOFF)
+
 /*****************************************************************************
 *  Macros
 *****************************************************************************/
+
+// properties
+#define U128_MAGNITUDE(x) ((int) log10(((double) U128_HI(x)) * 0x100000000UL \
+                                       * 0x100000000UL + (double) U128_LO))
 
 // byte assignment
 #define U128_RHS(lo, hi) {(lo), (hi)}
@@ -431,6 +437,20 @@ u128_eliminate_trailing_zeros(uint128_t *ui, unsigned n_max) {
         }
     }
     return n_trailing_zeros;
+}
+
+#define UINT64_MUL10_CUTOFF 1000000000000000000UL  // 10 ^ 18
+
+static inline void
+u128_imul10_add_digit(uint128_t *accu, int digit) {
+    uint64_t *lo = &U128P_LO(accu);
+
+    if (U128P_HI(accu) == 0 && *lo < UINT64_MUL10_CUTOFF)
+        *lo = *lo * 10UL + digit;
+    else {
+        u128_imul_u64(accu, 10UL);
+        u128_iadd_u64(accu, digit);
+    }
 }
 
 #endif // RATIONAL_UINT128_MATH_H

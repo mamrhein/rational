@@ -13,16 +13,29 @@ $Revision$
 
 #include <Python.h>
 #include <assert.h>
-#include <math.h>
+#include <stdlib.h>
 
 #include "common.h"
+#include "rounding.h"
+
+// Python math functions
+static PyObject *PyNumber_gcd = NULL;
+
+// Python number constants
+static PyObject *PyZERO = NULL;
+static PyObject *PyONE = NULL;
+static PyObject *PyTWO = NULL;
+static PyObject *PyFIVE = NULL;
+static PyObject *PyTEN = NULL;
+
+// helper functions
 
 static inline int
-rnp_from_rational(PyIntQuot *rnp, PyObject *num) {
+rnp_from_rational(PyIntQuot *rnp, PyObject *q) {
     ASSIGN_AND_CHECK_NULL(rnp->numerator,
-                          PyObject_GetAttrString(num, "numerator"));
+                          PyObject_GetAttrString(q, "numerator"));
     ASSIGN_AND_CHECK_NULL(rnp->denominator,
-                          PyObject_GetAttrString(num, "denominator"));
+                          PyObject_GetAttrString(q, "denominator"));
     return 0;
 
 ERROR:
@@ -116,6 +129,184 @@ CLEAN_UP:
     Py_XDECREF(lhs);
     Py_XDECREF(rhs);
     return res;
+}
+
+static inline error_t
+rnp_reduce_inplace(PyIntQuot *rnp) {
+    error_t rc = 0;
+    PyObject *divisor = NULL;
+    ASSIGN_AND_CHECK_NULL(divisor,
+                          PyObject_CallFunctionObjArgs(PyNumber_gcd,
+                                                       rnp->numerator,
+                                                       rnp->denominator,
+                                                       NULL));
+    if (PyObject_RichCompareBool(divisor, PyONE, Py_NE)) {
+        ASSIGN_AND_CHECK_NULL(rnp->numerator,
+                              PyNumber_InPlaceFloorDivide(rnp->numerator,
+                                                          divisor));
+        ASSIGN_AND_CHECK_NULL(rnp->denominator,
+                              PyNumber_InPlaceFloorDivide(rnp->denominator,
+                                                          divisor));
+    }
+    goto CLEAN_UP;
+
+ERROR:
+    rc = -1;
+
+CLEAN_UP:
+    Py_XDECREF(divisor);
+    return rc;
+}
+
+static PyObject *
+rnp_div_rounded(PyObject *divident, PyObject *divisor) {
+    // divisor must be >= 0 !!!
+    enum RN_ROUNDING_MODE rounding_mode = rn_rounding_mode();
+    PyObject *t = NULL;
+    PyObject *q = NULL;
+    PyObject *r = NULL;
+
+    ASSIGN_AND_CHECK_NULL(t, PyNumber_Divmod(divident, divisor));
+    ASSIGN_AND_CHECK_NULL(q, PySequence_GetItem(t, 0));
+    ASSIGN_AND_CHECK_NULL(r, PySequence_GetItem(t, 1));
+
+    if (PyObject_RichCompareBool(r, PyZERO, Py_EQ)) {
+        // no need for rounding
+        goto CLEAN_UP;
+    }
+
+    Py_CLEAR(t);
+    switch (rounding_mode) {
+        case RN_ROUND_05UP:
+            // Round down unless last digit is 0 or 5
+            // quotient not negativ and
+            // quotient divisible by 5 without remainder or
+            // quotient negativ and
+            // (quotient + 1) not divisible by 5 without remainder
+            // => add 1
+            if (PyObject_RichCompareBool(q, PyZERO, Py_GE)) {
+                ASSIGN_AND_CHECK_NULL(t, PyNumber_Remainder(q, PyFIVE));
+                if (PyObject_RichCompareBool(t, PyZERO, Py_EQ))
+                    q = PyNumber_InPlaceAdd(q, PyONE);
+            }
+            else {
+                ASSIGN_AND_CHECK_NULL(t, PyNumber_Add(q, PyONE));
+                ASSIGN_AND_CHECK_NULL(t, PyNumber_InPlaceRemainder(t, PyFIVE));
+                if (PyObject_RichCompareBool(t, PyZERO, Py_NE))
+                    q = PyNumber_InPlaceAdd(q, PyONE);
+            }
+            break;
+        case RN_ROUND_CEILING:
+            // Round towards Infinity (i. e. not towards 0 if non-negative)
+            // => always add 1
+            q = PyNumber_InPlaceAdd(q, PyONE);
+            break;
+        case RN_ROUND_DOWN:
+            // Round towards 0 (aka truncate)
+            // quotient negativ
+            // => add 1
+            if (PyObject_RichCompareBool(q, PyZERO, Py_LT))
+                q = PyNumber_InPlaceAdd(q, PyONE);
+            break;
+        case RN_ROUND_FLOOR:
+            // Round down (not towards 0 if negative)
+            // => never add 1
+            break;
+        case RN_ROUND_HALF_DOWN:
+            // Round 5 down (towards 0)
+            // remainder > divisor/2 or
+            // remainder = divisor/2 and quotient < 0
+            // => add 1
+            ASSIGN_AND_CHECK_NULL(t, PyNumber_Lshift(r, PyONE));
+            if (PyObject_RichCompareBool(t, divisor, Py_GT) ||
+                (PyObject_RichCompareBool(t, divisor, Py_EQ) &&
+                 PyObject_RichCompareBool(q, PyZERO, Py_LT)))
+                q = PyNumber_InPlaceAdd(q, PyONE);
+            break;
+        case RN_ROUND_HALF_EVEN:
+            // Round 5 to even, rest to nearest
+            // remainder > divisor/2 or
+            // remainder = divisor/2 and quotient not even
+            // => add 1
+            ASSIGN_AND_CHECK_NULL(t, PyNumber_Lshift(r, PyONE));
+            if (PyObject_RichCompareBool(t, divisor, Py_GT))
+                q = PyNumber_InPlaceAdd(q, PyONE);
+            else if (PyObject_RichCompareBool(t, divisor, Py_EQ)) {
+                Py_CLEAR(t);
+                ASSIGN_AND_CHECK_NULL(t, PyNumber_Remainder(q, PyTWO));
+                if (PyObject_RichCompareBool(q, PyZERO, Py_NE))
+                    q = PyNumber_InPlaceAdd(q, PyONE);
+            }
+            break;
+        case RN_ROUND_HALF_UP:
+            // Round 5 up (away from 0)
+            // remainder > divisor/2 or
+            // remainder = divisor/2 and quotient >= 0
+            // => add 1
+            ASSIGN_AND_CHECK_NULL(t, PyNumber_Lshift(r, PyONE));
+            if (PyObject_RichCompareBool(t, divisor, Py_GT) ||
+                (PyObject_RichCompareBool(t, divisor, Py_EQ) &&
+                 PyObject_RichCompareBool(q, PyZERO, Py_GE)))
+                q = PyNumber_InPlaceAdd(q, PyONE);
+            break;
+        case RN_ROUND_UP:
+            // Round away from 0
+            // quotient not negativ
+            // => add 1
+            if (PyObject_RichCompareBool(q, PyZERO, Py_GE))
+                q = PyNumber_InPlaceAdd(q, PyONE);
+            break;
+        default:
+            PyErr_SetString(PyExc_RuntimeError, "Unknown rounding mode");
+            goto ERROR;
+    }
+    goto CLEAN_UP;
+
+ERROR:
+    Py_CLEAR(q);
+
+CLEAN_UP:
+    Py_XDECREF(t);
+    Py_XDECREF(r);
+    return q;
+}
+
+static int
+rnp_adjusted(PyIntQuot *trgt, PyIntQuot *src, rn_prec_t to_prec) {
+    int rc = 0;
+    PyObject *t = NULL;
+    PyObject *s = NULL;
+
+    ASSIGN_AND_CHECK_NULL(t, PyLong_FromLong(abs(to_prec)));
+    ASSIGN_AND_CHECK_NULL(s, PyNumber_Power(PyTEN, t, Py_None));
+    Py_CLEAR(t);
+    if (to_prec >= 0) {
+        ASSIGN_AND_CHECK_NULL(t, PyNumber_Multiply(src->numerator, s));
+        ASSIGN_AND_CHECK_NULL(trgt->numerator,
+                              rnp_div_rounded(t, src->denominator));
+        Py_INCREF(s);
+        trgt->denominator = s;
+        if (rnp_reduce_inplace(trgt) == 0)
+            goto CLEAN_UP;
+    }
+    else {
+        ASSIGN_AND_CHECK_NULL(t, PyNumber_Multiply(src->denominator, s));
+        ASSIGN_AND_CHECK_NULL(trgt->numerator, 
+                              rnp_div_rounded(src->numerator, t));
+        ASSIGN_AND_CHECK_NULL(trgt->numerator, 
+                              PyNumber_InPlaceMultiply(trgt->numerator, s));
+        Py_INCREF(PyONE);
+        trgt->denominator = PyONE;
+        goto CLEAN_UP;
+    }
+
+ERROR:
+    rc = -1;
+
+CLEAN_UP:
+    Py_XDECREF(t);
+    Py_XDECREF(s);
+    return rc;
 }
 
 static inline PyObject *
