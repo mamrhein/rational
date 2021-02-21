@@ -23,23 +23,6 @@ import pytest
 from rational import (
     Rational, Rounding, get_dflt_rounding_mode, set_dflt_rounding_mode)
 
-RN_MAX_PREC = 2 ** 63 - 1
-RN_HUGE_PREC = 2 ** 16 - 1
-
-
-@pytest.fixture(scope="module")
-def dflt_rounding():
-    rnd = get_dflt_rounding_mode()
-    set_dflt_rounding_mode(Rounding.ROUND_HALF_UP)
-    yield
-    set_dflt_rounding_mode(rnd)
-
-
-# noinspection PyUnusedLocal
-def test_dflt_rounding(dflt_rounding):
-    """Activate fixture to set default rounding"""
-    pass
-
 
 class IntWrapper:
 
@@ -97,12 +80,10 @@ class Dummy:
         return len(self.s)
 
 
-@pytest.mark.parametrize("prec", [None, 0, 7],
-                         ids=("prec=None", "prec=0", "prec=7"))
-def test_rational_no_value(prec):
-    rn = Rational(precision=prec)
+def test_rational_no_value():
+    rn = Rational()
     assert isinstance(rn, Rational)
-    assert rn.precision == (prec if prec else 0)
+    assert rn._prec == 0
 
 
 @pytest.mark.parametrize("num", [float, 3 + 2j, Dummy(17)],
@@ -112,73 +93,43 @@ def test_rational_wrong_num_type(num):
         Rational(num)
 
 
-# noinspection PyTypeChecker
-@pytest.mark.parametrize("prec", ["5", 7.5],
-                         ids=("prec='5'", "prec=7.5"))
-def test_rational_wrong_precision_type(prec):
-    with pytest.raises(TypeError):
-        Rational(precision=prec)
-
-
-@pytest.mark.parametrize("prec", [-RN_MAX_PREC - 1, RN_MAX_PREC + 1],
-                         ids=("prec<RN_MIN_PREC", "prec>RN_MAX_PREC"))
-def test_rational_wrong_precision_value(prec):
-    with pytest.raises(ValueError):
-        Rational(precision=prec)
-
-
 compact_coeff = 174
 compact_prec = 1
 compact_ratio = Fraction(compact_coeff, 10 ** compact_prec)
 compact_str = ".174e2"
-compact_adj = 0
-compact_adj_ratio = round(compact_ratio)
 small_coeff = 123456789012345678901234567890
 small_prec = 20
 small_ratio = Fraction(-small_coeff, 10 ** small_prec)
 small_str = "-12345678901234567890.1234567890E-10"
-small_adj = 15
-small_adj_ratio = Fraction(round(-small_coeff, small_adj - small_prec),
-                           10 ** small_prec)
 large_coeff = 294898 * 10 ** 2453 + 1498953
 large_prec = 459
 large_ratio = Fraction(large_coeff, 10 ** large_prec)
 large_str = f"{large_coeff}e-{large_prec}"
-large_adj = large_prec - 30
-large_adj_ratio = Fraction(round(large_coeff, large_adj - large_prec),
-                           10 ** large_prec)
 
 
 @pytest.mark.parametrize(("num", "den"),
                          ((compact_ratio.numerator, compact_ratio.denominator),
                           (small_ratio.numerator, small_ratio.denominator),
                           (large_ratio.numerator, -large_ratio.denominator),
-                          (8290, -10000)),
-                         ids=("compact", "small", "large", "frac-only"))
-def test_rational_from_ratio_dflt_prec(num, den):
+                          (8290, -10000),
+                          (small_coeff, large_coeff),
+                          (large_coeff, small_coeff),
+                          (-compact_coeff, -large_ratio),
+                          (-small_ratio, -compact_coeff),
+                          (compact_ratio, -large_ratio),
+                          (-small_ratio, compact_ratio),),
+                         ids=("compact", "small", "large", "frac-only",
+                              "small/large", "large/small",
+                              "compact/large-ratio",
+                              "small-ratio/compact",
+                              "compact-ratio/large-ratio",
+                              "small-ratio/compact-ratio"))
+def test_rational_from_ratio(num, den):
     rn = Rational(num, den)
     assert isinstance(rn, Rational)
-    assert rn.precision is None
     f = Fraction(num, den)
     assert rn.numerator == f.numerator
     assert rn.denominator == f.denominator
-
-
-@pytest.mark.parametrize(("num", "den", "prec", "ratio"),
-                         ((compact_ratio.numerator, compact_ratio.denominator,
-                           compact_adj, compact_adj_ratio),
-                          (small_ratio.numerator, small_ratio.denominator,
-                           small_adj, small_adj_ratio),
-                          (large_ratio.numerator, -large_ratio.denominator,
-                           large_adj, -large_adj_ratio),
-                          (8290, -10000, 2, Fraction(-83, 100))),
-                         ids=("compact", "small", "large", "frac-only"))
-def test_rational_from_ratio_adj_prec(num, den, prec, ratio):
-    rn = Rational(num, den, precision=prec)
-    assert isinstance(rn, Rational)
-    assert rn.precision == prec
-    assert rn.numerator == ratio.numerator
-    assert rn.denominator == ratio.denominator
 
 
 @pytest.mark.parametrize(("value", "prec", "ratio"),
@@ -191,50 +142,12 @@ def test_rational_from_ratio_adj_prec(num, den, prec, ratio):
                           (" -1/3\t ", None, Fraction(-1, 3)),),
                          ids=("compact", "small", "large", "frac-only",
                               "zeros", "zeros-with-point", "1/3",))
-def test_rational_from_str_dflt_prec(value, prec, ratio):
+def test_rational_from_str(value, prec, ratio):
     rn = Rational(value)
     assert isinstance(rn, Rational)
-    assert rn.precision == prec
+    # assert rn._prec == prec
     assert rn.numerator == ratio.numerator
     assert rn.denominator == ratio.denominator
-
-
-@pytest.mark.parametrize(("value", "prec", "ratio"),
-                         ((compact_str, compact_adj, compact_adj_ratio),
-                          (small_str, small_adj, small_adj_ratio),
-                          (large_str, large_adj, large_adj_ratio),
-                          ("27.81029", IntWrapper(3), Fraction(2781, 100)),
-                          (".829", 2, Fraction(83, 100)),
-                          (".726", 0, 1)),
-                         ids=("compact", "small", "large", "Integral as prec",
-                              "frac-only", "carry-over"))
-def test_rational_from_str_adj(value, prec, ratio):
-    rn = Rational(value, precision=prec)
-    assert isinstance(rn, Rational)
-    assert rn.precision == prec
-    assert rn.as_fraction() == ratio
-
-
-@pytest.mark.parametrize(("value", "prec", "ratio"),
-                         ((compact_str, compact_prec, compact_ratio),
-                          (small_str, small_prec, small_ratio),
-                          # TODO: restore
-                          # (large_str, large_prec, large_ratio),
-                          (large_str, None, large_ratio),
-                          (" .829  ", 3, Fraction(829, 1000)),
-                          ("\t -00000000 ", 0, 0),
-                          ("\t -000.00000", 0, 0)),
-                         ids=("compact", "small", "large", "frac-only",
-                              "zeros", "zeros-with-point"))
-def test_rational_from_str_no_adj(value, prec, ratio):
-    if prec is None:
-        adj = prec
-    else:
-        adj = prec * 3 + 1
-    rn = Rational(value, precision=adj)
-    assert isinstance(rn, Rational)
-    assert rn.precision == prec
-    assert rn.as_fraction() == ratio
 
 
 @pytest.mark.parametrize("value", ["\u1811\u1817.\u1814", "\u0f20.\u0f24"],
@@ -258,39 +171,10 @@ def test_rational_from_str_wrong_format(value):
 @pytest.mark.parametrize("ratio",
                          (compact_ratio, small_ratio, large_ratio),
                          ids=("compact", "small", "large"))
-def test_rational_from_rational_dflt_prec(ratio):
+def test_rational_from_rational(ratio):
     rn = Rational(ratio)
     rn = Rational(rn)
     assert isinstance(rn, Rational)
-    # assert rn.precision == prec
-    assert rn.as_fraction() == ratio
-
-
-@pytest.mark.parametrize(("value", "prec", "ratio"),
-                         ((compact_ratio, compact_adj, compact_adj_ratio),
-                          (small_ratio, small_adj, small_adj_ratio),
-                          (large_ratio, large_adj, large_adj_ratio)),
-                         ids=("compact", "small", "large"))
-def test_rational_from_rational_adj(value, prec, ratio):
-    rn = Rational(value)
-    assert isinstance(rn, Rational)
-    assert rn.precision is None
-    rn = Rational(rn, precision=prec)
-    assert rn.precision == prec
-    assert rn.as_fraction() == ratio
-
-
-@pytest.mark.parametrize(("value", "prec", "ratio"),
-                         ((compact_ratio, compact_prec, compact_ratio),
-                          (small_ratio, small_prec, small_ratio),
-                          (large_ratio, large_prec, large_ratio)),
-                         ids=("compact", "small", "large"))
-def test_rational_from_rational_no_adj(value, prec, ratio):
-    prec += 17
-    rn = Rational(value)
-    rn = Rational(rn, precision=prec)
-    assert isinstance(rn, Rational)
-    assert rn.precision == prec
     assert rn.as_fraction() == ratio
 
 
@@ -302,7 +186,7 @@ def test_rational_from_rational_no_adj(value, prec, ratio):
 def test_rational_from_decimal_cls_meth(value, prec, ratio):
     rn = Rational.from_decimal(value)
     assert isinstance(rn, Rational)
-    assert rn.precision == prec
+    # assert rn._prec == prec
     assert rn.as_fraction() == ratio
 
 
@@ -323,23 +207,7 @@ def test_rational_from_decimal_cls_meth_wrong_type(value):
 def test_rational_from_integral(value, ratio):
     rn = Rational(value)
     assert isinstance(rn, Rational)
-    assert rn.precision == 0
-    assert rn.as_fraction() == ratio
-
-
-@pytest.mark.parametrize(("value", "prec", "ratio"),
-                         ((compact_coeff, compact_adj, compact_coeff),
-                          (IntWrapper(328), 7, Fraction(328, 1)),
-                          (1939000285, -7, 1940000000),
-                          (small_coeff, small_adj, Fraction(small_coeff, 1)),
-                          (large_coeff, large_adj, Fraction(large_coeff, 1)),
-                          ),
-                         ids=("compact", "IntWrapper", "prec < 0", "small",
-                              "large",))
-def test_rational_from_integral_adj(value, prec, ratio):
-    rn = Rational(value, precision=prec)
-    assert isinstance(rn, Rational)
-    assert rn.precision == prec
+    # assert rn._prec == 0
     assert rn.as_fraction() == ratio
 
 
@@ -350,54 +218,19 @@ def test_rational_from_integral_adj(value, prec, ratio):
                           (Decimal(large_str), large_prec, large_ratio),
                           (Decimal("5.4e6"), 0, Fraction(5400000, 1))),
                          ids=("compact", "small", "large", "pos-exp"))
-def test_rational_from_decimal_dflt_prec(value, prec, ratio):
+def test_rational_from_decimal(value, prec, ratio):
     rn = Rational(value)
     assert isinstance(rn, Rational)
-    assert rn.precision == prec
+    # assert rn._prec == prec
     assert rn.as_fraction() == ratio
 
 
-@pytest.mark.parametrize(("value", "prec", "ratio"),
-                         ((Decimal(compact_str), compact_adj,
-                           compact_adj_ratio),
-                          (Decimal(small_str), small_adj,
-                           small_adj_ratio),
-                          (Decimal(large_str), large_adj,
-                           large_adj_ratio),
-                          (Decimal("54e-3"), 3, Fraction(54, 1000)),
-                          (Decimal("5.4e4"), 2, Fraction(54000, 1))),
-                         ids=("compact", "small", "large", "exp+prec=0",
-                              "pos-exp"))
-def test_rational_from_decimal_adj(value, prec, ratio):
-    rn = Rational(value, precision=prec)
-    assert isinstance(rn, Rational)
-    assert rn.precision == prec
-    assert rn.as_fraction() == ratio
-
-
-@pytest.mark.parametrize(("value", "prec", "ratio"),
-                         ((Decimal(compact_str), compact_prec,
-                           compact_ratio),
-                          (Decimal(small_str), small_prec, small_ratio),
-                          (Decimal(large_str), large_prec, large_ratio),
-                          (Decimal("5.4e6"), 0, Fraction(5400000, 1))),
-                         ids=("compact", "small", "large", "pos-exp"))
-def test_rational_from_decimal_no_adj(value, prec, ratio):
-    prec *= 5
-    rn = Rational(value, precision=prec)
-    assert isinstance(rn, Rational)
-    assert rn.precision == prec
-    assert rn.as_fraction() == ratio
-
-
-@pytest.mark.parametrize(("value", "prec"),
-                         ((Decimal('inf'), compact_prec),
-                          (Decimal('-inf'), None),
-                          (Decimal('nan'), large_prec)),
+@pytest.mark.parametrize("value",
+                         (Decimal('inf'), Decimal('-inf'), Decimal('nan')),
                          ids=("inf", "-inf", "nan"))
-def test_rational_from_incompat_decimal(value, prec):
+def test_rational_from_incompat_decimal(value):
     with pytest.raises(ValueError):
-        Rational(value, precision=prec)
+        Rational(value)
 
 
 @pytest.mark.parametrize(("value", "prec", "ratio"),
@@ -406,47 +239,19 @@ def test_rational_from_incompat_decimal(value, prec):
                            Fraction(int(sys.float_info.max), 1)),
                           (FloatWrapper(328.5), 1, Fraction(3285, 10))),
                          ids=("compact", "float.max", "FloatWrapper"))
-def test_rational_from_float_dflt_prec(value, prec, ratio):
+def test_rational_from_float(value, prec, ratio):
     rn = Rational(value)
     assert isinstance(rn, Rational)
-    # assert rn.precision == prec
+    # assert rn._prec == prec
     assert rn.as_fraction() == ratio
 
 
-@pytest.mark.parametrize(("value", "prec", "ratio"),
-                         ((17.5, 3, Fraction(175, 10)),
-                          (sys.float_info.min, 17, Fraction(0, 1)),
-                          (FloatWrapper(328.5), 0, Fraction(329, 1))),
-                         ids=("compact", "float.min", "FloatWrapper"))
-def test_rational_from_float_adj(value, prec, ratio):
-    rn = Rational(value, precision=prec)
-    assert isinstance(rn, Rational)
-    assert rn.precision == prec
-    assert rn.as_fraction() == ratio
-
-
-@pytest.mark.parametrize(("value", "prec", "ratio"),
-                         ((17.5, 1, Fraction(175, 10)),
-                          (sys.float_info.max, 0,
-                           Fraction(int(sys.float_info.max), 1)),
-                          (FloatWrapper(328.5), 1, Fraction(3285, 10))),
-                         ids=("compact", "float.max", "FloatWrapper"))
-def test_rational_from_float_no_adj(value, prec, ratio):
-    prec += 7
-    rn = Rational(value, precision=prec)
-    assert isinstance(rn, Rational)
-    assert rn.precision == prec
-    assert rn.as_fraction() == ratio
-
-
-@pytest.mark.parametrize(("value", "prec"),
-                         ((float('inf'), compact_prec),
-                          (float('-inf'), None),
-                          (float('nan'), large_prec),),
-                         ids=("inf", "-inf", "nan",))
-def test_rational_from_incompat_float(value, prec):
+@pytest.mark.parametrize("value",
+                         (float('inf'), float('-inf'), float('nan')),
+                         ids=("inf", "-inf", "nan"))
+def test_rational_from_incompat_float(value):
     with pytest.raises(ValueError):
-        Rational(value, precision=prec)
+        Rational(value)
 
 
 @pytest.mark.parametrize(("value", "prec", "ratio"),
@@ -458,7 +263,7 @@ def test_rational_from_incompat_float(value, prec):
 def test_rational_from_float_cls_meth(value, prec, ratio):
     rn = Rational.from_float(value)
     assert isinstance(rn, Rational)
-    # assert rn.precision == prec
+    # assert rn._prec == prec
     assert rn.as_fraction() == ratio
 
 
@@ -478,41 +283,10 @@ def test_rational_from_float_cls_meth_wrong_type(value):
                           (15, Fraction(sys.maxsize, 10 ** 15)),
                           (63, Fraction(1, sys.maxsize + 1))),
                          ids=("compact", "float.max", "maxsize", "frac_only"))
-def test_rational_from_fraction_dflt_prec(prec, ratio):
+def test_rational_from_fraction(prec, ratio):
     rn = Rational(ratio)
     assert isinstance(rn, Rational)
-    # assert rn.precision == prec
-    assert rn.as_fraction() == ratio
-
-
-@pytest.mark.parametrize(("value", "prec", "ratio"),
-                         ((Fraction(175, 10), 0, Fraction(18, 1)),
-                          (Fraction(int(sys.float_info.max), 1), 7,
-                           Fraction(int(sys.float_info.max), 1)),
-                          (Fraction(sys.maxsize, 10 ** 15), 10,
-                           Fraction(round(sys.maxsize, -5), 10 ** 15)),
-                          (Fraction(1, 333333333333333333333333333333), 30,
-                           round(Fraction(1, 333333333333333333333333333333),
-                                 30))),
-                         ids=("compact", "float.max", "maxsize", "fraction"))
-def test_rational_from_fraction_adj(value, prec, ratio):
-    rn = Rational(value, precision=prec)
-    assert isinstance(rn, Rational)
-    assert rn.precision == prec
-    assert rn.as_fraction() == ratio
-
-
-@pytest.mark.parametrize(("prec", "ratio"),
-                         ((1, Fraction(175, 10)),
-                          (0, Fraction(int(sys.float_info.max), 1)),
-                          (15, Fraction(sys.maxsize, 10 ** 15)),
-                          (63, Fraction(1, sys.maxsize + 1))),
-                         ids=("compact", "float.max", "maxsize", "frac_only"))
-def test_rational_from_fraction_no_adj(prec, ratio):
-    prec = 2 * prec + 5
-    rn = Rational(ratio, precision=prec)
-    assert isinstance(rn, Rational)
-    assert rn.precision == prec
+    # assert rn._prec == prec
     assert rn.as_fraction() == ratio
 
 
@@ -525,11 +299,3 @@ def test_copy(value):
     rn = Rational(value)
     assert copy.copy(rn) is rn
     assert copy.deepcopy(rn) is rn
-
-
-# @pytest.mark.parametrize("value",
-#                          ("-0." + "7" * (RN_MAX_PREC + 1),),
-#                          ids=(f"prec > {RN_MAX_PREC}",))
-# def test_limits_exceeded(value):
-#     with pytest.raises(ValueError):
-#         Rational(value)

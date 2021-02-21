@@ -12,6 +12,7 @@ $Revision$
 #define RATIONAL_UINT64_MATH_H
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 /*****************************************************************************
@@ -65,9 +66,19 @@ u64_n_leading_0_bits(const uint64_t x) {
     return 63 - u64_most_signif_bit_pos(x);
 }
 
+static inline bool
+u64_is_uneven(const uint64_t x) {
+    return x & 1U;
+}
+
+static inline bool
+u64_is_even(const uint64_t x) {
+    return !u64_is_uneven(x);
+}
+
 // powers of 10
 #define UINT64_10_POW_N_CUTOFF 19
-static uint64_t U64_10_pows[20] = {
+static uint64_t U64_10_POWS[20] = {
     1UL,
     10UL,
     100UL,
@@ -93,7 +104,7 @@ static uint64_t U64_10_pows[20] = {
 static inline uint64_t
 u64_10_pow_n(unsigned int exp) {
     assert(exp <= UINT64_10_POW_N_CUTOFF);
-    return U64_10_pows[exp];
+    return U64_10_POWS[exp];
 }
 
 #endif //RATIONAL_UINT64_MATH_H

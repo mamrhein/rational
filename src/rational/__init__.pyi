@@ -19,20 +19,17 @@ class Rational(numbers.Rational):
 
     @overload
     def __new__(cls: Type[Rational], numerator: None = None,
-                denominator: None = None,
-                precision: None = None) \
+                denominator: None = None) \
             -> Rational:
         ...
     @overload
     def __new__(cls: Type[Rational], numerator: str = ...,
-                denominator: None = None,
-                precision: Optional[int] = None) \
+                denominator: None = None) \
             -> Rational:
         ...
     @overload
     def __new__(cls: Type[Rational], numerator: RationalT = ...,
-                denominator: Optional[RationalT] = ...,
-                precision: Optional[int] = None) \
+                denominator: Optional[RationalT] = ...) \
             -> Rational:
         ...
     @classmethod
@@ -43,7 +40,7 @@ class Rational(numbers.Rational):
     def from_decimal(cls: Type[Rational], d: RationalT) -> Rational:
         ...
     @property
-    def precision(self) -> Optional[int]:
+    def _prec(self) -> Optional[int]:
         ...
     @property
     def magnitude(self) -> int:

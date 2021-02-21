@@ -67,13 +67,115 @@ ERROR:
 }
 
 static void
-u64_idiv_rounded(uint64_t *divident, const uint64_t *divisor, bool neg) {
+u64_idiv_rounded(uint64_t *divident, uint64_t divisor, bool neg) {
+    enum RN_ROUNDING_MODE rounding = rn_rounding_mode();
+    uint64_t quot, rem, tie;
 
+    rem = *divident % divisor;
+    *divident /= divisor;
+    quot = *divident;
+    switch (rounding) {
+        case RN_ROUND_05UP:
+            // Round down unless last digit is 0 or 5
+            if (quot % 5 == 0)
+                ++(*divident);
+            break;
+        case RN_ROUND_CEILING:
+            // Round towards Infinity (i. e. not towards 0 if non-negative)
+            if (!neg)
+                ++(*divident);
+            break;
+        case RN_ROUND_DOWN:
+            // Round towards 0 (aka truncate)
+            break;
+        case RN_ROUND_FLOOR:
+            // Round towards -Infinity (i.e. not towards 0 if negative)
+            if (neg)
+                ++(*divident);
+            break;
+        case RN_ROUND_HALF_DOWN:
+            // Round 5 down, rest to nearest
+            tie = divisor >> 1U;
+            if (rem > tie)
+                ++(*divident);
+            break;
+        case RN_ROUND_HALF_EVEN:
+            // Round 5 to nearest even, rest to nearest
+            tie = divisor >> 1U;
+            if (rem > tie || (rem == tie && u64_is_even(divisor) &&
+                              u64_is_uneven(quot)))
+                ++(*divident);
+            break;
+        case RN_ROUND_HALF_UP:
+            // Round 5 up (away from 0), rest to nearest
+            tie = divisor >> 1U;
+            if (rem > tie || (rem == tie && u64_is_even(divisor)))
+                ++(*divident);
+            break;
+        case RN_ROUND_UP:
+            // Round away from 0
+            ++(*divident);
+            break;
+        default:
+            break;
+    }
 }
 
 static void
 u128_idiv_rounded(uint128_t *divident, const uint128_t *divisor, bool neg) {
+    enum RN_ROUNDING_MODE rounding = rn_rounding_mode();
+    uint128_t quot, rem, tie;
+    int cmp;
 
+    u128_idiv_u128(&rem, divident, divisor);
+    quot = *divident;
+    switch (rounding) {
+        case RN_ROUND_05UP:
+            // Round down unless last digit is 0 or 5
+            if (u128_idiv_u32(&quot, 5) == 0)
+                u128_incr(divident);
+            break;
+        case RN_ROUND_CEILING:
+            // Round towards Infinity (i. e. not towards 0 if non-negative)
+            if (!neg)
+                u128_incr(divident);
+            break;
+        case RN_ROUND_DOWN:
+            // Round towards 0 (aka truncate)
+            break;
+        case RN_ROUND_FLOOR:
+            // Round towards -Infinity (i.e. not towards 0 if negative)
+            if (neg)
+                u128_incr(divident);
+            break;
+        case RN_ROUND_HALF_DOWN:
+            // Round 5 down, rest to nearest
+            tie = u128_shift_right(divisor, 1UL);
+            if (u128_cmp(rem, tie) > 0)
+                u128_incr(divident);
+            break;
+        case RN_ROUND_HALF_EVEN:
+            // Round 5 to nearest even, rest to nearest
+            tie = u128_shift_right(divisor, 1UL);
+            cmp = u128_cmp(rem, tie);
+            if (cmp > 0 || (cmp == 0 && u128_is_even(divisor) &&
+                            u128_is_uneven(&quot)))
+                u128_incr(divident);
+            break;
+        case RN_ROUND_HALF_UP:
+            // Round 5 up (away from 0), rest to nearest
+            tie = u128_shift_right(divisor, 1UL);
+            cmp = u128_cmp(rem, tie);
+            if (cmp > 0 || (cmp == 0 && u128_is_even(divisor)))
+                u128_incr(divident);
+            break;
+        case RN_ROUND_UP:
+            // Round away from 0
+            u128_incr(divident);
+            break;
+        default:
+            break;
+    }
 }
 
 #endif //RATIONAL_ROUNDING_H

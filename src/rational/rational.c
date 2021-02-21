@@ -8,16 +8,15 @@ $Source$
 $Revision$
 */
 
+#undef __SIZEOF_INT128__
 #define PY_SSIZE_T_CLEAN
 #define Py_LIMITED_API 0x03070000
 
 #include <Python.h>
 #include <assert.h>
 #include <errno.h>
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <wctype.h>
 
 #include "common.h"
 #include "compiler_macros.h"
@@ -55,16 +54,6 @@ static PyObject *Integral = NULL;
 
 static PyObject *Fraction = NULL;
 static PyObject *Decimal = NULL;
-
-// PyLong methods
-
-static PyObject *PyLong_bit_length = NULL;
-
-// Python number constants
-
-static PyObject *Py64 = NULL;
-static PyObject *PyUInt64Max = NULL;
-static PyObject *Py2pow64 = NULL;
 
 // Python constants for hash function
 
@@ -109,10 +98,13 @@ static PyTypeObject *RationalType;
 #define RN_PYINT_QUOT_PTR(rn) \
     ((PyIntQuot *)&((RationalObject *)rn)->numerator)
 
-// Method prototypes
+// Method and helper prototypes
 
 static PyObject *
 Rational_as_fraction(RationalObject *self, PyObject *args UNUSED);
+
+static error_t
+rn_assert_num_den(RationalObject *rn);
 
 // Type checks
 
@@ -158,7 +150,7 @@ RationalType_alloc(PyTypeObject *type) {
     rn->sign = RN_SIGN_ZERO;
     rn->prec = 0;
     rn->exp = 0;
-    rn->coeff = 0;
+    rn->coeff = UINT128_ZERO;
     return rn;
 }
 
@@ -202,183 +194,199 @@ rn_optimize_pyquot(RationalObject *rn) {
 }
 
 static PyObject *
-RationalType_from_rational_obj(PyTypeObject *type, RationalObject *rn,
-                               rn_prec_t adjust_to_prec) {
-    if (adjust_to_prec == RN_UNLIM_PREC || rn->prec <= adjust_to_prec ||
-            (rn->variant == RN_FPDEC && rn->exp >= -adjust_to_prec)) {
-        if (type == RationalType) {
-            // rn is a direct instance of RationalType, a direct instance of
-            // RationalType is wanted and there's no need to adjust the result,
-            // so just return the given instance (ref count increased)
-            Py_INCREF(rn);
-            return (PyObject *)rn;
-        }
-        else {
-            RATIONAL_ALLOC_SELF(type);
-            Rational_raw_data_copy(self, rn);
-            if (rn->numerator != NULL) {
-                Py_INCREF(rn->numerator);
-                self->numerator = rn->numerator;
-                Py_INCREF(rn->denominator);
-                self->denominator = rn->denominator;
-            }
-            self->hash = rn->hash;
-            return (PyObject *)self;
-        }
-    }
-    // resulting value has to be adjusted
-    RATIONAL_ALLOC_SELF(type);
-    Rational_raw_data_copy(self, rn);
-    switch (rn->variant) {
-        case RN_FPDEC:
-            // self->coeff = rnd_adjusted(rn->coeff, rn->exp, adjust_to_prec)
-            break;
-        case RN_U64_QUOT:
-            // ... rnq_adjusted(...)
-            break;
-        case RN_PYINT_QUOT: {
-            CHECK_RC(rnp_adjusted(RN_PYINT_QUOT_PTR(self),
-                                  RN_PYINT_QUOT_PTR(rn),
-                                  adjust_to_prec));
-            rn_optimize_pyquot(self);
-            break;
-        }
-        default:
-            PyErr_SetString(PyExc_RuntimeError,
-                            "Internal representation error");
-            goto ERROR;
-    }
-    self->prec = adjust_to_prec;
-    return (PyObject *)self;
-
-ERROR:
-    Py_XDECREF(self);
-    return NULL;
-}
-
-static PyObject *
-RationalType_from_pylong(PyTypeObject *type, PyObject *val,
-                         rn_prec_t adjust_to_prec) {
-    RATIONAL_ALLOC_SELF(type);
-
-    self->variant = RN_PYINT_QUOT;
-    if (adjust_to_prec != RN_UNLIM_PREC)
-        self->exp = -adjust_to_prec;
-    if (self->exp > 0) {
-        PyIntQuot quot = {val, PyONE};
-        if (rnp_adjusted(RN_PYINT_QUOT_PTR(self), &quot, adjust_to_prec) != 0)
-            goto ERROR;
+RationalType_from_rational_obj(PyTypeObject *type, RationalObject *rn) {
+    if (type == RationalType) {
+        // rn is a direct instance of RationalType and a direct instance of
+        // RationalType is wanted, so just return the given instance
+        // (ref count increased)
+        Py_INCREF(rn);
+        return (PyObject *)rn;
     }
     else {
-        Py_INCREF(val);
-        self->numerator = val;
-        Py_INCREF(PyONE);
-        self->denominator = PyONE;
+        RATIONAL_ALLOC_SELF(type);
+        Rational_raw_data_copy(self, rn);
+        if (rn->numerator != NULL) {
+            Py_INCREF(rn->numerator);
+            self->numerator = rn->numerator;
+            Py_INCREF(rn->denominator);
+            self->denominator = rn->denominator;
+        }
+        self->hash = rn->hash;
+        return (PyObject *)self;
     }
-    return (PyObject *)self;
-
-ERROR:
-    Py_XDECREF(self);
-    return NULL;
 }
 
 static PyObject *
-RationalType_from_integral(PyTypeObject *type, PyObject *val,
-                           rn_prec_t adjust_to_prec) {
+RationalType_from_pylong(PyTypeObject *type, PyObject *val) {
+    long long lval;
+    PyObject *abs_val = NULL;
+    PyObject *lo = NULL;
+    PyObject *hi = NULL;
+
+    RATIONAL_ALLOC_SELF(type);
+    if (PyObject_RichCompareBool(val, PyZERO, Py_EQ))
+        return (PyObject *)self;
+    Py_INCREF(val);
+    self->numerator = val;
+    Py_INCREF(PyONE);
+    self->denominator = PyONE;
+    // try optimized variant
+    // val fits into long long?
+    lval = PyLong_AsLongLong(val);
+    if (!PyErr_Occurred()) {
+        if (lval > 0) {
+            self->sign = RN_SIGN_POS;
+            U128_FROM_LO_HI(&self->coeff, lval, 0ULL);
+        }
+        else  {
+            self->sign = RN_SIGN_NEG;
+            U128_FROM_LO_HI(&self->coeff, -lval, 0ULL);
+        }
+        goto CLEAN_UP;
+    }
+    PyErr_Clear();  // fall through
+    // get sign and absolute value
+    if (PyObject_RichCompareBool(val, PyZERO, Py_GE)) {
+        self->sign = RN_SIGN_POS;
+        Py_INCREF(val);
+        abs_val = val;
+    }
+    else {
+        self->sign = RN_SIGN_NEG;
+        ASSIGN_AND_CHECK_NULL(abs_val, PyNumber_Absolute(val));
+    }
+    // abs_val fits into uint128?
+    ASSIGN_AND_CHECK_NULL(hi, PyNumber_Rshift(abs_val, Py64));
+    ASSIGN_AND_CHECK_NULL(lo, PyNumber_And(abs_val, PyUInt64Max));
+    U128_FROM_LO_HI(&self->coeff,
+                    PyLong_AsUnsignedLongLong(lo),
+                    PyLong_AsUnsignedLongLong(hi));
+    if (!PyErr_Occurred())
+        goto CLEAN_UP;
+
+ERROR:
+    PyErr_Clear();
+    self->variant = RN_PYINT_QUOT;
+
+CLEAN_UP:
+    Py_XDECREF(abs_val);
+    Py_XDECREF(hi);
+    Py_XDECREF(lo);
+    return (PyObject *)self;
+}
+
+static PyObject *
+RationalType_from_integral(PyTypeObject *type, PyObject *val) {
     PyObject *rn;
     PyObject *i = PyNumber_Long(val);
     if (i == NULL)
         return NULL;
-    rn = RationalType_from_pylong(type, i, adjust_to_prec);
+    rn = RationalType_from_pylong(type, i);
     Py_DECREF(i);
     return rn;
 }
 
-/*
-static error_t
-fpdec_from_num_den(fpdec_t *fpdec, PyObject *numerator,
-                   PyObject *denominator, rn_prec_t adjust_to_prec) {
-    error_t rc;
-    fpdec_t num = FPDEC_ZERO;
-    fpdec_t den = FPDEC_ZERO;
-
-    rc = fpdec_from_pylong(&num, numerator);
-    CHECK_FPDEC_ERROR(rc);
-    rc = fpdec_from_pylong(&den, denominator);
-    CHECK_FPDEC_ERROR(rc);
-    rc = fpdec_div(fpdec, &num, &den, (int)adjust_to_prec,
-                   FPDEC_ROUND_DEFAULT);
-
-ERROR:
-    fpdec_reset_to_zero(&num, 0);
-    fpdec_reset_to_zero(&den, 0);
-    return rc;
-}
-*/
-
 static PyObject *
 RationalType_from_normalized_num_den(PyTypeObject *type, PyObject *numerator,
-                                     PyObject *denominator,
-                                     rn_prec_t adjust_to_prec) {
-    uint64_t u64_num, u64_den;
+                                     PyObject *denominator) {
     RATIONAL_ALLOC_SELF(type);
 
+    if (PyObject_RichCompareBool(numerator, PyZERO, Py_EQ))
+        return (PyObject *)self;
+
+    if (PyObject_RichCompareBool(numerator, PyZERO, Py_LT))
+        self->sign = RN_SIGN_NEG;
+    else
+        self->sign = RN_SIGN_POS;
     self->variant = RN_PYINT_QUOT;
     self->exp = RN_UNDEF_EXP;
-    if (adjust_to_prec != RN_UNLIM_PREC) {
-        PyIntQuot quot = {numerator, denominator};
-        if (rnp_adjusted(RN_PYINT_QUOT_PTR(self), &quot, adjust_to_prec) != 0)
-            goto ERROR;
-    }
-    else {
-        Py_INCREF(numerator);
-        self->numerator = numerator;
-        Py_INCREF(denominator);
-        self->denominator = denominator;
-    }
-    self->prec = adjust_to_prec;
+    Py_INCREF(numerator);
+    self->numerator = numerator;
+    Py_INCREF(denominator);
+    self->denominator = denominator;
     rn_optimize_pyquot(self);
     return (PyObject *)self;
-
-ERROR:
-    Py_XDECREF(self);
-    return NULL;
 }
 
 static PyObject *
 RationalType_from_num_den(PyTypeObject *type, PyObject *numerator,
-                          PyObject *denominator, rn_prec_t adjust_to_prec) {
+                          PyObject *denominator) {
+    PyObject *ratio = NULL;
+    PyObject *t = NULL;
     PyIntQuot quot = {NULL, NULL};
     PyObject *res = NULL;
 
-    if (PyObject_RichCompareBool(denominator, PyZERO, Py_GE)) {
+    if (PyLong_Check(numerator)) {
+        Py_INCREF(numerator);
         quot.numerator = numerator;
-        quot.denominator = denominator;
     }
     else {
-        ASSIGN_AND_CHECK_NULL(quot.numerator, PyNumber_Negative(numerator));
+        ASSIGN_AND_CHECK_NULL(ratio,
+                              PyObject_CallMethod(numerator,
+                                                  "as_integer_ratio", NULL));
+        ASSIGN_AND_CHECK_NULL(quot.numerator,
+                              PySequence_GetItem(ratio, 0));
         ASSIGN_AND_CHECK_NULL(quot.denominator,
-                              PyNumber_Negative(denominator));
+                              PySequence_GetItem(ratio, 1));
+        Py_CLEAR(ratio);
+    }
+    if (PyLong_Check(denominator)) {
+        if (quot.denominator == NULL) {
+            Py_INCREF(denominator);
+            quot.denominator = denominator;
+        }
+        else
+            ASSIGN_AND_CHECK_NULL(quot.denominator,
+                                  PyNumber_InPlaceMultiply(quot.denominator,
+                                                           denominator));
+    }
+    else {
+        ASSIGN_AND_CHECK_NULL(ratio,
+                              PyObject_CallMethod(denominator,
+                                                  "as_integer_ratio", NULL));
+        ASSIGN_AND_CHECK_NULL(t, PySequence_GetItem(ratio, 1));
+        ASSIGN_AND_CHECK_NULL(quot.numerator,
+                              PyNumber_InPlaceMultiply(quot.numerator, t));
+        Py_CLEAR(t);
+        if (quot.denominator == NULL)
+            ASSIGN_AND_CHECK_NULL(quot.denominator,
+                                  PySequence_GetItem(ratio, 0));
+        else {
+            ASSIGN_AND_CHECK_NULL(t, PySequence_GetItem(ratio, 0));
+            ASSIGN_AND_CHECK_NULL(quot.denominator,
+                                  PyNumber_InPlaceMultiply(quot.denominator,
+                                                           t));
+            Py_CLEAR(t);
+        }
+        Py_CLEAR(ratio);
+    }
+    if (PyObject_RichCompareBool(quot.denominator, PyZERO, Py_LT)) {
+        t = quot.numerator;
+        ASSIGN_AND_CHECK_NULL(quot.numerator, PyNumber_Negative(t));
+        Py_CLEAR(t);
+        t = quot.denominator;
+        ASSIGN_AND_CHECK_NULL(quot.denominator, PyNumber_Negative(t));
+        Py_CLEAR(t);
     }
     if (rnp_reduce_inplace(&quot) < 0)
         goto ERROR;
     res = RationalType_from_normalized_num_den(type, quot.numerator,
-                                               quot.denominator,
-                                               adjust_to_prec);
+                                               quot.denominator);
     goto CLEAN_UP;
 
 ERROR:
     assert(PyErr_Occurred());
 
 CLEAN_UP:
+    Py_XDECREF(ratio);
+    Py_XDECREF(t);
     Py_XDECREF(quot.numerator);
     Py_XDECREF(quot.denominator);
     return res;
 }
 
 static PyObject *
-RationalType_from_rational(PyTypeObject *type, PyObject *val,
-                           rn_prec_t adjust_to_prec) {
+RationalType_from_rational(PyTypeObject *type, PyObject *val) {
     PyObject *numerator = NULL;
     PyObject *denominator = NULL;
     PyObject *res = NULL;
@@ -389,8 +397,7 @@ RationalType_from_rational(PyTypeObject *type, PyObject *val,
                           PyObject_GetAttrString(val, "denominator"));
     ASSIGN_AND_CHECK_NULL(res,
                           RationalType_from_normalized_num_den(type, numerator,
-                                                               denominator,
-                                                               adjust_to_prec));
+                                                               denominator));
     goto CLEAN_UP;
 
 ERROR:
@@ -403,8 +410,7 @@ CLEAN_UP:
 }
 
 static PyObject *
-RationalType_from_str(PyTypeObject *type, PyObject *val,
-                      rn_prec_t adjust_to_prec) {
+RationalType_from_str(PyTypeObject *type, PyObject *val) {
     Py_UCS4 *buf;
     error_t rc;
     struct rn_parsed_repr parsed;
@@ -429,13 +435,7 @@ RationalType_from_str(PyTypeObject *type, PyObject *val,
             }
             if (parsed.num == 0)
                 goto CLEAN_UP;
-            if (adjust_to_prec == RN_UNLIM_PREC)
-                rnq_reduce_quot(&parsed.num, &parsed.den);
-            else {
-                if (rnq_adjust_quot(&parsed.num, &parsed.den, parsed.neg,
-                                    adjust_to_prec) < 0)
-                    goto FALLBACK;
-            }
+            rnq_reduce_quot(&parsed.num, &parsed.den);
             if (rnd_from_quot(&self->coeff, &self->exp, parsed.num,
                               parsed.den) == 0) {
                 self->variant = RN_FPDEC;
@@ -446,19 +446,13 @@ RationalType_from_str(PyTypeObject *type, PyObject *val,
                 self->u64_num = parsed.num;
                 self->u64_den = parsed.den;
                 self->exp = RN_UNDEF_EXP;
-                self->prec = adjust_to_prec;
+                self->prec = RN_UNLIM_PREC;
             }
         }
-        else if (parsed.coeff == UINT128_ZERO)
+        else if (U128_EQ_ZERO(parsed.coeff))
             goto CLEAN_UP;
         else {
             self->variant = RN_FPDEC;
-            if (adjust_to_prec != RN_UNLIM_PREC &&
-                    adjust_to_prec < -parsed.exp) {
-                if (rnd_adjust_coeff_exp(&parsed.coeff, &parsed.exp,
-                                         parsed.neg, adjust_to_prec))
-                    goto FALLBACK;
-            }
             self->coeff = parsed.coeff;
             self->exp = parsed.exp;
             self->prec = -parsed.exp;
@@ -474,9 +468,7 @@ FALLBACK:
     ASSIGN_AND_CHECK_NULL(frac,
                           PyObject_CallFunctionObjArgs(Fraction, val,
                                                        NULL));
-    ASSIGN_AND_CHECK_NULL(res,
-                          RationalType_from_rational(type, frac,
-                                                     adjust_to_prec));
+    ASSIGN_AND_CHECK_NULL(res, RationalType_from_rational(type, frac));
     goto CLEAN_UP;
 
 ERROR:
@@ -489,8 +481,7 @@ CLEAN_UP:
 }
 
 static PyObject *
-RationalType_from_float(PyTypeObject *type, PyObject *val,
-                       rn_prec_t adjust_to_prec) {
+RationalType_from_float(PyTypeObject *type, PyObject *val) {
     PyObject *res = NULL;
     PyObject *ratio = NULL;
     PyObject *numerator = NULL;
@@ -502,8 +493,7 @@ RationalType_from_float(PyTypeObject *type, PyObject *val,
     ASSIGN_AND_CHECK_NULL(denominator, PySequence_GetItem(ratio, 1));
     ASSIGN_AND_CHECK_NULL(res,
                           RationalType_from_normalized_num_den(type, numerator,
-                                                               denominator,
-                                                               adjust_to_prec));
+                                                               denominator));
     goto CLEAN_UP;
 
 ERROR:
@@ -526,14 +516,9 @@ CLEAN_UP:
 }
 
 static PyObject *
-RationalType_from_decimal(PyTypeObject *type, PyObject *val,
-                          rn_prec_t adjust_to_prec) {
-    // TODO: use Decimal capsule API (starting with Python 3.10!)
+RationalType_from_decimal(PyTypeObject *type, PyObject *val) {
     PyObject *res = NULL;
     PyObject *is_finite = NULL;
-    PyObject *tup = NULL;
-    PyObject *exp = NULL;
-    long prec = adjust_to_prec;
 
     ASSIGN_AND_CHECK_NULL(is_finite,
                           PyObject_CallMethod(val, "is_finite", NULL));
@@ -541,17 +526,7 @@ RationalType_from_decimal(PyTypeObject *type, PyObject *val,
         PyErr_Format(PyExc_ValueError, "Can't convert %R to Rational.", val);
         goto ERROR;
     }
-
-    // get number of fractional digits from given value
-    ASSIGN_AND_CHECK_NULL(tup,
-                          PyObject_CallMethod(val, "as_tuple", NULL));
-    ASSIGN_AND_CHECK_NULL(exp, PySequence_GetItem(tup, 2));
-    prec = MAX(0L, -PyLong_AsLong(exp));
-    if (PyErr_Occurred())
-        goto ERROR;
-    if (adjust_to_prec == RN_UNLIM_PREC) {
-    }
-    ASSIGN_AND_CHECK_NULL(res, RationalType_from_float(type, val, prec));
+    ASSIGN_AND_CHECK_NULL(res, RationalType_from_float(type, val));
     goto CLEAN_UP;
 
 ERROR:
@@ -559,35 +534,32 @@ ERROR:
 
 CLEAN_UP:
     Py_XDECREF(is_finite);
-    Py_XDECREF(tup);
-    Py_XDECREF(exp);
     return res;
 }
 
 static PyObject *
 RationalType_from_float_or_int(PyTypeObject *type, PyObject *val) {
     if (PyFloat_Check(val))
-        return RationalType_from_float(type, val, RN_UNLIM_PREC);
+        return RationalType_from_float(type, val);
     if (PyLong_Check(val)) // NOLINT(hicpp-signed-bitwise)
-        return RationalType_from_pylong(type, val, RN_UNLIM_PREC);
+        return RationalType_from_pylong(type, val);
     return PyErr_Format(PyExc_TypeError, "%R is not a float or int.", val);
 }
 
 static PyObject *
 RationalType_from_decimal_or_int(PyTypeObject *type, PyObject *val) {
     if (PyObject_IsInstance(val, Decimal))
-        return RationalType_from_decimal(type, val, RN_UNLIM_PREC);
+        return RationalType_from_decimal(type, val);
     if (PyLong_Check(val)) // NOLINT(hicpp-signed-bitwise)
-        return RationalType_from_pylong(type, val, RN_UNLIM_PREC);
+        return RationalType_from_pylong(type, val);
     if (PyObject_IsInstance(val, Integral))
-        return RationalType_from_integral(type, val, RN_UNLIM_PREC);
+        return RationalType_from_integral(type, val);
     return PyErr_Format(PyExc_TypeError, "%R is not a Decimal or Integral.",
                         val);
 }
 
 static PyObject *
-RationalType_from_obj(PyTypeObject *type, PyObject *obj,
-                      rn_prec_t adjust_to_prec) {
+RationalType_from_obj(PyTypeObject *type, PyObject *obj) {
 
     if (obj == Py_None) {
         RATIONAL_ALLOC_SELF(type);
@@ -595,39 +567,36 @@ RationalType_from_obj(PyTypeObject *type, PyObject *obj,
         self->numerator = PyZERO;
         Py_INCREF(PyONE);
         self->denominator = PyONE;
-        if (adjust_to_prec > 0)
-            self->exp = -adjust_to_prec;
         return (PyObject *)self;
     }
 
     // Rational
     if (Rational_Check(obj))
-        return RationalType_from_rational_obj(type, (RationalObject *)obj,
-                                              adjust_to_prec);
+        return RationalType_from_rational_obj(type, (RationalObject *)obj);
 
     // String
     if (PyUnicode_Check(obj)) // NOLINT(hicpp-signed-bitwise)
-        return RationalType_from_str(type, obj, adjust_to_prec);
+        return RationalType_from_str(type, obj);
 
     // Python <int>
     if (PyLong_Check(obj)) // NOLINT(hicpp-signed-bitwise)
-        return RationalType_from_pylong(type, obj, adjust_to_prec);
+        return RationalType_from_pylong(type, obj);
 
     // Integral
     if (PyObject_IsInstance(obj, Integral))
-        return RationalType_from_integral(type, obj, adjust_to_prec);
+        return RationalType_from_integral(type, obj);
 
     // abstract Rational
     if (PyObject_IsInstance(obj, Rational))
-        return RationalType_from_rational(type, obj, adjust_to_prec);
+        return RationalType_from_rational(type, obj);
 
     // Decimal
     if (PyObject_IsInstance(obj, Decimal))
-        return RationalType_from_decimal(type, obj, adjust_to_prec);
+        return RationalType_from_decimal(type, obj);
 
     // Python <float>, Real
     if (PyFloat_Check(obj) || PyObject_IsInstance(obj, Real))
-        return RationalType_from_float(type, obj, adjust_to_prec);
+        return RationalType_from_float(type, obj);
 
     // unable to create Rational
     return PyErr_Format(PyExc_TypeError, "Can't convert %R to Rational.", obj);
@@ -635,35 +604,19 @@ RationalType_from_obj(PyTypeObject *type, PyObject *obj,
 
 static PyObject *
 RationalType_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
-    static char *kw_names[] = {"numerator", "denominator", "precision", NULL};
+    static char *kw_names[] = {"numerator", "denominator", NULL};
     PyObject *numerator = Py_None;
     PyObject *denominator = Py_None;
-    PyObject *precision = Py_None;
-    PY_LONG_LONG adjust_to_prec;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|OO$O", kw_names,
-                                     &numerator, &denominator, &precision))
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|OO", kw_names,
+                                     &numerator, &denominator))
         return NULL;
 
-    if (precision == Py_None)
-        adjust_to_prec = RN_UNLIM_PREC;
-    else {
-        if (!PyObject_IsInstance(precision, Integral))
-            return type_error_ptr("Precision must be of type 'numbers"
-                                  ".Integral'.");
-        adjust_to_prec = PyLong_AsLongLong(precision);
-        if ((adjust_to_prec == -1 && PyErr_Occurred()) ||
-                adjust_to_prec < RN_MIN_PREC || adjust_to_prec > RN_MAX_PREC)
-            return value_error_ptr("Precision limit exceeded.");
-    }
-
     if (denominator == Py_None)
-        return (PyObject *)RationalType_from_obj(type, numerator,
-                                                 adjust_to_prec);
+        return (PyObject *)RationalType_from_obj(type, numerator);
     if (PyObject_RichCompareBool(denominator, PyZERO, Py_EQ))
         return value_error_ptr("Denominator must not be zero.");
-    return RationalType_from_num_den(type, numerator, denominator,
-                                     adjust_to_prec);
+    return RationalType_from_num_den(type, numerator, denominator);
 }
 
 // Helper macros
@@ -688,7 +641,6 @@ Rational_precision_get(RationalObject *self, void *closure UNUSED) {
 
 static PyObject *
 Rational_magnitude_get(RationalObject *self, void *closure UNUSED) {
-    PyObject *res = NULL;
     int magn;
 
     if (self->sign == 0) {
@@ -723,23 +675,24 @@ rn_assert_num_den(RationalObject *rn) {
         switch (rn->variant) {
             case RN_FPDEC:
                 if (rn->sign == RN_SIGN_NEG) {
-                    ASSIGN_AND_CHECK_NULL(num, PyLong_from_u128(&rn->coeff));
+                    ASSIGN_AND_CHECK_NULL(num, pylong_from_u128(&rn->coeff));
                     ASSIGN_AND_CHECK_NULL(rn->numerator,
                                           PyNumber_Negative(num));
                 }
                 else
                     ASSIGN_AND_CHECK_NULL(rn->numerator,
-                                          PyLong_from_u128(&rn->coeff));
+                                          pylong_from_u128(&rn->coeff));
                 if (rn->exp == 0) {
                     Py_INCREF(PyONE);
                     rn->denominator = PyONE;
                 }
                 else if (rn->exp < 0) {
+                    uint64_t d;
                     rn_exp_t t = -rn->exp;
-                    if (t <= UINT64_10_POW_N_CUTOFF) {
-                        t = u64_10_pow_n(t);
+                    if (t < UINT64_10_POW_N_CUTOFF) {
+                        d = u64_10_pow_n(t);
                         ASSIGN_AND_CHECK_NULL(rn->denominator,
-                                              PyLong_FromLongLong(t));
+                                              PyLong_FromLongLong(d));
                     }
                     else {
                         ASSIGN_AND_CHECK_NULL(exp, PyLong_FromLong(t));
@@ -750,8 +703,8 @@ rn_assert_num_den(RationalObject *rn) {
                 }
                 else {
                     Py_XDECREF(num);
-                    if (rn->exp <= UINT64_10_POW_N_CUTOFF) {
-                        rn_exp_t t = u64_10_pow_n(rn->exp);
+                    if (rn->exp < UINT64_10_POW_N_CUTOFF) {
+                        uint64_t t = u64_10_pow_n(rn->exp);
                         ASSIGN_AND_CHECK_NULL(num, PyLong_FromLong(t));
                         ASSIGN_AND_CHECK_NULL(rn->numerator,
                                               PyNumber_InPlaceMultiply
@@ -765,7 +718,10 @@ rn_assert_num_den(RationalObject *rn) {
                                               PyNumber_InPlaceMultiply
                                               (rn->numerator, num));
                     }
+                    Py_INCREF(PyONE);
+                    rn->denominator = PyONE;
                 }
+                // TODO: check whether this is neccessary
                 if (rnp_reduce_inplace(RN_PYINT_QUOT_PTR(rn)) < 0)
                     goto ERROR;
                 break;
@@ -869,7 +825,7 @@ Rational_str(RationalObject *self) {
             }
             else
                 frac = 0;
-            if (u128_lt(coeff, UINT64_MAX)) {
+            if (U128_HI(coeff) == 0) {
                 if (frac > 0)
                     res = PyUnicode_FromFormat("%llu.%llu",
                                                U128_LO(coeff), frac);
@@ -1558,6 +1514,80 @@ Rational_adjusted(RationalObject *self, PyObject *args, PyObject *kwds) {
     return Rational_adj_to_prec(self, precision, rounding);
 }
 
+//static PyObject *
+//RationalType_from_rational_obj(PyTypeObject *type, RationalObject *rn,
+//                               rn_prec_t adjust_to_prec) {
+//    if (adjust_to_prec == RN_UNLIM_PREC || rn->prec <= adjust_to_prec ||
+//        (rn->variant == RN_FPDEC && rn->exp >= -adjust_to_prec)) {
+//        if (type == RationalType) {
+//            // rn is a direct instance of RationalType, a direct instance of
+//            // RationalType is wanted and there's no need to adjust the result,
+//            // so just return the given instance (ref count increased)
+//            Py_INCREF(rn);
+//            return (PyObject *)rn;
+//        }
+//        else {
+//            RATIONAL_ALLOC_SELF(type);
+//            Rational_raw_data_copy(self, rn);
+//            if (rn->numerator != NULL) {
+//                Py_INCREF(rn->numerator);
+//                self->numerator = rn->numerator;
+//                Py_INCREF(rn->denominator);
+//                self->denominator = rn->denominator;
+//            }
+//            self->hash = rn->hash;
+//            return (PyObject *)self;
+//        }
+//    }
+//    // resulting value has to be adjusted
+//    RATIONAL_ALLOC_SELF(type);
+//    Rational_raw_data_copy(self, rn);
+//    switch (rn->variant) {
+//        case RN_FPDEC:
+//            if (rnd_adjust_coeff_exp(&self->coeff, &self->exp,
+//                                     self->sign == RN_SIGN_NEG,
+//                                     adjust_to_prec) < 0)
+//                goto FALLBACK;
+//            break;
+//        case RN_U64_QUOT:
+//            if (rnq_adjust_quot(&self->u64_num, &self->u64_den,
+//                                self->sign == RN_SIGN_NEG,
+//                                adjust_to_prec) < 0)
+//                goto FALLBACK;
+//            if (rnd_from_quot(&self->coeff, &self->exp,
+//                              self->u64_num, self->u64_den) == 0)
+//                self->variant = RN_FPDEC;
+//            break;
+//        case RN_PYINT_QUOT: {
+//            CHECK_RC(rnp_adjusted(RN_PYINT_QUOT_PTR(self),
+//                                  RN_PYINT_QUOT_PTR(rn),
+//                                  adjust_to_prec));
+//            rn_optimize_pyquot(self);
+//            break;
+//        }
+//        default:
+//            PyErr_SetString(PyExc_RuntimeError,
+//                            "Internal representation error");
+//            goto ERROR;
+//    }
+//    self->prec = adjust_to_prec;
+//    return (PyObject *)self;
+//
+//FALLBACK:
+//    if (rn_assert_num_den(rn) == 0) {
+//        CHECK_RC(rnp_adjusted(RN_PYINT_QUOT_PTR(self),
+//                              RN_PYINT_QUOT_PTR(rn),
+//                              adjust_to_prec));
+//        rn_optimize_pyquot(self);
+//        self->prec = adjust_to_prec;
+//        return (PyObject *)self;
+//    }
+//
+//ERROR:
+//    Py_XDECREF(self);
+//    return NULL;
+//}
+
 static PyObject *
 Rational_quantize(RationalObject *self, PyObject *args, PyObject *kwds) {
     static char *kw_names[] = {"quant", "rounding", NULL};
@@ -1772,7 +1802,7 @@ CLEAN_UP:
 // Rational type spec
 
 static PyGetSetDef Rational_properties[] = {
-    {"precision", (getter)Rational_precision_get, 0,
+    {"_prec", (getter)Rational_precision_get, 0,
      Rational_precision_doc, 0},
     {"magnitude", (getter)Rational_magnitude_get, 0,
      Rational_magnitude_doc, 0},

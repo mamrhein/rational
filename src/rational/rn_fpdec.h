@@ -18,6 +18,7 @@ $Revision$
 #else
 #include "uint128_math.h"
 #endif // __int128
+
 #include "rounding.h"
 
 static inline PyObject *
@@ -25,13 +26,11 @@ PyLong_from_u128_lo_hi(uint64_t lo, uint64_t hi) {
     PyObject *res = NULL;
     PyObject *res_hi = NULL;
     PyObject *res_lo = NULL;
-    PyObject *sh = NULL;
     PyObject *t = NULL;
 
     ASSIGN_AND_CHECK_NULL(res_hi, PyLong_FromUnsignedLongLong(hi));
     ASSIGN_AND_CHECK_NULL(res_lo, PyLong_FromUnsignedLongLong(lo));
-    ASSIGN_AND_CHECK_NULL(sh, PyLong_FromSize_t(64));
-    ASSIGN_AND_CHECK_NULL(t, PyNumber_Lshift(res_hi, sh));
+    ASSIGN_AND_CHECK_NULL(t, PyNumber_Lshift(res_hi, Py64));
     ASSIGN_AND_CHECK_NULL(res, PyNumber_Add(t, res_lo));
     goto CLEAN_UP;
 
@@ -41,13 +40,12 @@ ERROR:
 CLEAN_UP:
     Py_XDECREF(res_hi);
     Py_XDECREF(res_lo);
-    Py_XDECREF(sh);
     Py_XDECREF(t);
     return res;
 }
 
 static inline PyObject *
-PyLong_from_u128(const uint128_t *ui) {
+pylong_from_u128(const uint128_t *ui) {
     if (U128P_HI(ui) == 0)
         return PyLong_FromUnsignedLongLong(U128P_LO(ui));
     else
@@ -56,7 +54,7 @@ PyLong_from_u128(const uint128_t *ui) {
 
 static inline uint64_t
 two_pow_n(uint32_t n) {
-    return (2ULL << n);
+    return (1ULL << n);
 }
 
 static inline uint64_t
@@ -77,15 +75,15 @@ least_pow_10_multiple(uint64_t *factor, uint64_t n) {
     uint32_t nf2 = 0;
     uint32_t nf5 = 0;
     uint32_t nf10 = 0;
-    while (n > 1 && (n % 10) != 0) {
+    while (n >= 10 && (n % 10) == 0) {
         n /= 10;
         ++nf10;
     }
-    while (n > 1 && (n % 5) != 0) {
+    while (n >= 5 && (n % 5) == 0) {
         n /= 5;
         ++nf5;
     }
-    while (n > 1 && (n % 2) != 0) {
+    while (n >= 2 && (n % 2) == 0) {
         n /= 2;
         ++nf2;
     }

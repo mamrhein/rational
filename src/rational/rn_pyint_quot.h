@@ -21,13 +21,6 @@ $Revision$
 // Python math functions
 static PyObject *PyNumber_gcd = NULL;
 
-// Python number constants
-static PyObject *PyZERO = NULL;
-static PyObject *PyONE = NULL;
-static PyObject *PyTWO = NULL;
-static PyObject *PyFIVE = NULL;
-static PyObject *PyTEN = NULL;
-
 // helper functions
 
 static inline int

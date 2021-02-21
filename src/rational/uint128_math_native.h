@@ -66,6 +66,16 @@ u128_n_signif_u32(const uint128_t x) {
            (U64_HI(U128_LO(x)) != 0 ? 2 : 1);
 }
 
+static inline bool
+u128_is_uneven(const uint128_t *x) {
+    return U128P_LO(x) & 1U;
+}
+
+static inline bool
+u128_is_even(const uint128_t *x) {
+    return !u128_is_uneven(x);
+}
+
 // Comparison
 
 static inline int
@@ -196,7 +206,7 @@ u128_idiv_10(uint128_t *x) {
 }
 
 static inline uint128_t
-u128_shift_right(uint128_t *x, unsigned n_bits) {
+u128_shift_right(const uint128_t *x, unsigned n_bits) {
     assert(n_bits < 64U);
     return *x >> n_bits;
 }

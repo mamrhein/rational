@@ -16,7 +16,9 @@ $Revision$
 #define RATIONAL_UINT128_MATH_H
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
+
 #include "uint64_math.h"
 
 // Large unsigned int
@@ -36,7 +38,7 @@ static const uint128_t UINT128_MAX = {UINT64_MAX, UINT64_MAX};
 
 // properties
 #define U128_MAGNITUDE(x) ((int) log10(((double) U128_HI(x)) * 0x100000000UL \
-                                       * 0x100000000UL + (double) U128_LO))
+                                       * 0x100000000UL + (double) U128_LO(x)))
 
 // byte assignment
 #define U128_RHS(lo, hi) {(lo), (hi)}
@@ -71,6 +73,16 @@ u128_n_signif_u32(const uint128_t x) {
     return (U128_HI(x) != 0) ?
            (U64_HI(U128_HI(x)) != 0 ? 4 : 3) :
            (U64_HI(U128_LO(x)) != 0 ? 2 : 1);
+}
+
+static inline bool
+u128_is_uneven(const uint128_t *x) {
+    return U128P_LO(x) & 1U;
+}
+
+static inline bool
+u128_is_even(const uint128_t *x) {
+    return !u128_is_uneven(x);
 }
 
 // Comparison
@@ -410,7 +422,7 @@ u128_idiv_10(uint128_t *x) {
 }
 
 static inline uint128_t
-u128_shift_right(uint128_t *x, unsigned n_bits) {
+u128_shift_right(const uint128_t *x, unsigned n_bits) {
     assert(n_bits < 64U);
     uint128_t t;
 

@@ -35,6 +35,19 @@ typedef struct pyint_quot {
     PyObject *denominator;
 } PyIntQuot;
 
+// PyLong methods
+static PyObject *PyLong_bit_length = NULL;
+
+// Python number constants
+static PyObject *PyZERO = NULL;
+static PyObject *PyONE = NULL;
+static PyObject *PyTWO = NULL;
+static PyObject *PyFIVE = NULL;
+static PyObject *PyTEN = NULL;
+static PyObject *Py64 = NULL;
+static PyObject *PyUInt64Max = NULL;
+static PyObject *Py2pow64 = NULL;
+
 // Macros to simplify error checking
 
 #define ASSIGN_AND_CHECK_NULL(result, expr) \

@@ -70,7 +70,7 @@ rnq_adjust_quot(uint64_t *num, uint64_t *den, bool neg, rn_prec_t to_prec) {
         *den = 1;
     }
     else {
-        u64_idiv_rounded(num, den, neg);
+        u64_idiv_rounded(num, *den, neg);
         *den = 1;
     }
     return 0;
