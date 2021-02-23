@@ -23,17 +23,20 @@ from rational import Rational
 @pytest.mark.parametrize("value",
                          ("17.8",
                           ".".join(("1" * 3297, "4" * 33)),
-                          "0.00014"),
+                          "14/900"),
                          ids=("compact", "large", "fraction"))
 def test_true(value):
     q = Rational(value)
     assert q
 
 
-@pytest.mark.parametrize("value", (None, "0.0000"),
-                         ids=("None", "0"))
+@pytest.mark.parametrize("value", (None, "0.0000", (0, -999999999)),
+                         ids=("None", "0", "0/-999999999"))
 def test_false(value):
-    q = Rational(value)
+    if isinstance(value, tuple):
+        q = Rational(*value);
+    else:
+        q = Rational(value)
     assert not q
 
 
@@ -102,38 +105,39 @@ def test_as_fraction(value):
     assert q.as_fraction() == f
 
 
-@pytest.mark.parametrize(("value", "prec", "str_"),
-                         ((None, None, "0"),
-                          (None, 2, "0.00"),
-                          ("-20.7e-3", 5, "-0.02070"),
-                          ("0.0000000000207", None, "0.0000000000207"),
-                          (887 * 10 ** 14, 0, "887" + "0" * 14)))
-def test_str(value, prec, str_):
-    q = Rational(value, precision=prec)
+@pytest.mark.parametrize(("value", "str_"),
+                         ((None, "0"),
+                          ("-20.7e-3", "-0.0207"),
+                          ("0.0000000000207", "0.0000000000207"),
+                          (887 * 10 ** 14, "887" + "0" * 14),
+                          ("-287/8290", "-287/8290")),
+                         ids=lambda p: str(p))
+def test_str(value, str_):
+    q = Rational(value)
     assert str(q) == str_
 
 
-@pytest.mark.parametrize(("value", "prec", "bstr"),
-                         ((None, None, b"0"),
-                          (None, 2, b"0.00"),
-                          ("-20.7e-3", 5, b"-0.02070"),
-                          ("0.0000000000207", None, b"0.0000000000207"),
-                          (887 * 10 ** 14, 0, b"887" + b"0" * 14)))
-def test_bytes(value, prec, bstr):
-    q = Rational(value, precision=prec)
+@pytest.mark.parametrize(("value", "bstr"),
+                         ((None, b"0"),
+                          ("-20.7e-3", b"-0.0207"),
+                          ("0.0000000000207", b"0.0000000000207"),
+                          (887 * 10 ** 14, b"887" + b"0" * 14),
+                          ("-287/8290", "-287/8290")),
+                         ids=lambda p: str(p))
+def test_bytes(value, bstr):
+    q = Rational(value)
     assert bytes(q) == bstr
 
 
-@pytest.mark.parametrize(("value", "prec", "repr_"),
-                         ((None, None, "Rational(0)"),
-                          (None, 2, "Rational(0, 2)"),
-                          ("15", 2, "Rational(15, 2)"),
-                          ("15.4", 2, "Rational('15.4', 2)"),
-                          ("-20.7e-3", 5, "Rational('-0.0207', 5)"),
-                          ("0.0000000000207", None,
-                           "Rational('0.0000000000207')"),
-                          (887 * 10 ** 14, 0,
-                           "Rational(887" + "0" * 14 + ")")))
-def test_repr(value, prec, repr_):
-    q = Rational(value, precision=prec)
+@pytest.mark.parametrize(("value", "repr_"),
+                         ((None, "Rational(0)"),
+                          ("15", "Rational(15)"),
+                          ("15.4", "Rational('15.4')"),
+                          ("-20.7e-3", "Rational('-0.0207')"),
+                          ("0.0000000000207", "Rational('0.0000000000207')"),
+                          (887 * 10 ** 14, "Rational(887" + "0" * 14 + ")"),
+                          ("-287/8290", "-287/8290")),
+                         ids=lambda p: str(p))
+def test_repr(value, repr_):
+    q = Rational(value)
     assert repr(q) == repr_
