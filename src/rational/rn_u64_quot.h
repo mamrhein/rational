@@ -81,4 +81,14 @@ rnq_magnitude(uint64_t num, uint64_t den) {
     return U64_MAGNITUDE(num) - U64_MAGNITUDE(den);
 }
 
+static inline PyObject *
+rnq_to_int(rn_sign_t sign, uint64_t num, uint64_t den) {
+    return PyLong_FromLongLong(sign * (int64_t)(num / den));
+}
+
+static inline PyObject *
+rnq_to_float(rn_sign_t sign, uint64_t num, uint64_t den) {
+    return PyFloat_FromDouble(sign * (double)num / den);
+}
+
 #endif //RATIONAL_RN_U64_QUOT_H

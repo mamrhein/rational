@@ -1143,18 +1143,35 @@ Rational_abs(RationalObject *self) {
 
 static PyObject *
 Rational_int(RationalObject *self, PyObject *args UNUSED) {
-    if (self->variant == RN_PYINT_QUOT)
-        return rnp_to_int(RN_PYINT_QUOT_PTR(self));
-    PyErr_SetString(PyExc_RuntimeError, "Corrupted internal representation.");
-    return NULL;
+    switch (self->variant) {
+        case RN_FPDEC:
+            return rnd_to_int(self->sign, self->coeff, self->exp);
+        case RN_U64_QUOT:
+            return rnq_to_int(self->sign, self->u64_num, self->u64_den);
+        case RN_PYINT_QUOT:
+            return rnp_to_int(RN_PYINT_QUOT_PTR(self));
+        default:
+            PyErr_SetString(PyExc_RuntimeError,
+                            "Corrupted internal representation.");
+            return NULL;
+    }
 }
 
 static PyObject *
 Rational_float(RationalObject *self, PyObject *args UNUSED) {
-    if (self->variant == RN_PYINT_QUOT)
-        return rnp_to_float(RN_PYINT_QUOT_PTR(self));
-    PyErr_SetString(PyExc_RuntimeError, "Corrupted internal representation.");
-    return NULL;
+    switch (self->variant) {
+        case RN_FPDEC:
+            rn_assert_num_den(self);
+            return rnp_to_float(RN_PYINT_QUOT_PTR(self));
+        case RN_U64_QUOT:
+            return rnq_to_float(self->sign, self->u64_num, self->u64_den);
+        case RN_PYINT_QUOT:
+            return rnp_to_float(RN_PYINT_QUOT_PTR(self));
+        default:
+            PyErr_SetString(PyExc_RuntimeError,
+                            "Corrupted internal representation.");
+            return NULL;
+    }
 }
 
 static int

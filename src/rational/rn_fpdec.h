@@ -149,4 +149,86 @@ rnd_adjust_coeff_exp(uint128_t *coeff, rn_exp_t *exp, bool neg,
     return 0;
 }
 
+static inline PyObject *
+rnd_coeff_mul_10_pow_exp(uint128_t *coeff, rn_exp_t exp) {
+    PyObject *res = NULL;
+    PyObject *e = NULL;
+    PyObject *t = NULL;
+
+    ASSIGN_AND_CHECK_NULL(e, PyLong_FromLong(exp));
+    ASSIGN_AND_CHECK_NULL(t, PyNumber_Power(PyTEN, e, Py_None));
+    ASSIGN_AND_CHECK_NULL(res, pylong_from_u128(coeff));
+    ASSIGN_AND_CHECK_NULL(res, PyNumber_InPlaceMultiply(res, t));
+
+ERROR:
+    assert (PyErr_Occurred());
+
+CLEAN_UP:
+    Py_XDECREF(e);
+    Py_XDECREF(t);
+    return res;
+}
+
+static inline PyObject *
+rnd_coeff_floordiv_10_pow_exp(uint128_t *coeff, rn_exp_t exp) {
+    PyObject *res = NULL;
+    PyObject *e = NULL;
+    PyObject *t = NULL;
+
+    ASSIGN_AND_CHECK_NULL(e, PyLong_FromLong(exp));
+    ASSIGN_AND_CHECK_NULL(t, PyNumber_Power(PyTEN, e, Py_None));
+    ASSIGN_AND_CHECK_NULL(res, pylong_from_u128(coeff));
+    ASSIGN_AND_CHECK_NULL(res, PyNumber_InPlaceFloorDivide(res, t));
+
+ERROR:
+    assert (PyErr_Occurred());
+
+CLEAN_UP:
+    Py_XDECREF(e);
+    Py_XDECREF(t);
+    return res;
+}
+
+static inline PyObject *
+rnd_to_int(rn_sign_t sign, uint128_t coeff, rn_exp_t exp) {
+    PyObject *res = NULL;
+    PyObject *abs_res = NULL;
+    int32_t abs_exp = ABS(exp);
+
+    if (abs_exp < UINT64_10_POW_N_CUTOFF) {
+        int32_t sh = u64_10_pow_n(abs_exp);
+        if (exp < 0) {
+            u128_idiv_u64(&coeff, sh);
+            ASSIGN_AND_CHECK_NULL(abs_res, pylong_from_u128(&coeff));
+        }
+        else {
+            uint128_t t = coeff;
+            u128_imul_u64(&t, sh);
+            if (u128_cmp(t, UINT128_MAX) == 0)
+                ASSIGN_AND_CHECK_NULL(abs_res,
+                                      rnd_coeff_mul_10_pow_exp(&coeff, exp));
+            ASSIGN_AND_CHECK_NULL(abs_res, pylong_from_u128(&coeff));
+        }
+    }
+    else if (exp < 0)
+        ASSIGN_AND_CHECK_NULL(abs_res,
+                              rnd_coeff_floordiv_10_pow_exp(&coeff, -exp));
+    else
+        ASSIGN_AND_CHECK_NULL(abs_res, rnd_coeff_mul_10_pow_exp(&coeff, exp));
+    if (sign == RN_SIGN_NEG)
+        ASSIGN_AND_CHECK_NULL(res, PyNumber_Negative(abs_res));
+    else {
+        Py_INCREF(abs_res);
+        res = abs_res;
+    }
+    goto CLEAN_UP;
+
+ERROR:
+    assert (PyErr_Occurred());
+
+CLEAN_UP:
+    Py_XDECREF(abs_res);
+    return res;
+}
+
 #endif //RATIONAL_RN_FPDEC_H
