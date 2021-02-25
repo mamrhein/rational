@@ -453,6 +453,8 @@ RationalType_from_str(PyTypeObject *type, PyObject *val) {
             goto CLEAN_UP;
         else {
             self->variant = RN_FPDEC;
+            parsed.exp += u128_eliminate_trailing_zeros(&parsed.coeff,
+                                                        UINT32_MAX);
             self->coeff = parsed.coeff;
             self->exp = parsed.exp;
             self->prec = -parsed.exp;
@@ -789,58 +791,24 @@ Rational_imag_get(RationalObject *self UNUSED, void *closure UNUSED) {
 // String representation
 
 static PyObject *
-Rational_bytes(RationalObject *self, PyObject *args UNUSED) {
-    PyObject *res = NULL;
-/*
-    char *lit = fpdec_as_ascii_literal(&self->coeff, false);
-
-    if (lit == NULL) {
-        PyErr_NoMemory();
-        return NULL;
-    }
-    res = PyBytes_FromString(lit);
-    fpdec_mem_free(lit);
-*/
-    return res;
-}
-
-static PyObject *
 Rational_str(RationalObject *self) {
     PyObject *res = NULL;
-    rn_sign_t sign = self->sign;
-    rn_exp_t exp;
-    uint128_t coeff;
-    uint64_t sh, frac;
+    char *sign;
 
-    if (sign == 0)
+    if (self->sign == 0)
         return PyUnicode_FromString("0");
 
+    sign = self->sign == RN_SIGN_NEG ? "-" : "";
     switch (self->variant) {
         case RN_FPDEC:
-            exp = self->exp;
-            coeff = self->coeff;
-            if (exp < 0) {
-                sh = u64_10_pow_n(-exp);
-                frac = u128_idiv_u64(&coeff, sh);
-            }
-            else
-                frac = 0;
-            if (U128_HI(coeff) == 0) {
-                if (frac > 0)
-                    res = PyUnicode_FromFormat("%llu.%llu",
-                                               U128_LO(coeff), frac);
-                else
-                    res = PyUnicode_FromFormat("%llu", U128_LO(coeff));
-            }
-            else
-                return PyUnicode_FromString("Not yet implemented");
+            res = rnd_to_str(sign, self->coeff, self->exp);
             break;
         case RN_U64_QUOT:
             if (self->u64_den == 1)
-                res = PyUnicode_FromFormat("%llu", self->u64_num);
+                res = PyUnicode_FromFormat("%s%llu", sign, self->u64_num);
             else
-                res = PyUnicode_FromFormat("%llu/%llu", self->u64_num,
-                                           self->u64_den);
+                res = PyUnicode_FromFormat("%s%llu/%llu", sign,
+                                           self->u64_num, self->u64_den);
             break;
         case RN_PYINT_QUOT:
             if (PyObject_RichCompareBool(self->denominator, PyONE, Py_EQ))
@@ -854,13 +822,38 @@ Rational_str(RationalObject *self) {
 }
 
 static PyObject *
+Rational_bytes(RationalObject *self, PyObject *args UNUSED) {
+    PyObject *res = NULL;
+    PyObject *ustr = NULL;
+
+    ustr = Rational_str(self);
+    if (ustr) {
+        res = PyUnicode_AsASCIIString(ustr);
+        Py_DECREF(ustr);
+    }
+    return res;
+}
+
+static PyObject *
 Rational_repr(RationalObject *self) {
     PyObject *res = NULL;
     PyObject *cls_name = NULL;
     cls_name = PyObject_GetAttrString((PyObject *)Py_TYPE(self), "__name__");
     if (cls_name == NULL)
         return NULL;
-    res = PyUnicode_FromFormat("%S('%S')", cls_name, self);
+    switch (self->variant) {
+        case RN_FPDEC:
+            if (self->exp < 0)
+                res = PyUnicode_FromFormat("%S('%S')", cls_name, self);
+            else
+                res = PyUnicode_FromFormat("%S(%S)", cls_name, self);
+            break;
+        default:
+            rn_assert_num_den(self);
+            res = PyUnicode_FromFormat("%S(%S, %S)", cls_name,
+                                       self->numerator, self->denominator);
+            break;
+    }
     Py_DECREF(cls_name);
     return res;
 }
