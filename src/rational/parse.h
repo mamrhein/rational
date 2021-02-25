@@ -12,6 +12,7 @@ $Revision$
 #define RATIONAL_PARSE_H
 
 #include <Python.h>
+#include <wctype.h>
 
 #include "common.h"
 #include "rn_fpdec.h"
