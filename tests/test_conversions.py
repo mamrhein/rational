@@ -107,9 +107,13 @@ def test_as_fraction(value):
 
 @pytest.mark.parametrize(("value", "str_"),
                          ((None, "0"),
+                          (15, "15"),
+                          ("17.50", "17.5"),
                           ("-20.7e-3", "-0.0207"),
                           ("0.0000000000207", "0.0000000000207"),
+                          ("-319e-27", "-0." + "0" * 24 + "319"),
                           (887 * 10 ** 14, "887" + "0" * 14),
+                          ("27e23", "27" + "0" * 23),
                           ("-287/8290", "-287/8290")),
                          ids=lambda p: str(p))
 def test_str(value, str_):
@@ -122,7 +126,7 @@ def test_str(value, str_):
                           ("-20.7e-3", b"-0.0207"),
                           ("0.0000000000207", b"0.0000000000207"),
                           (887 * 10 ** 14, b"887" + b"0" * 14),
-                          ("-287/8290", "-287/8290")),
+                          ("-287/8290", b"-287/8290")),
                          ids=lambda p: str(p))
 def test_bytes(value, bstr):
     q = Rational(value)
@@ -132,11 +136,15 @@ def test_bytes(value, bstr):
 @pytest.mark.parametrize(("value", "repr_"),
                          ((None, "Rational(0)"),
                           ("15", "Rational(15)"),
-                          ("15.4", "Rational('15.4')"),
+                          ("15.000", "Rational(15)"),
+                          ("15.400", "Rational('15.4')"),
                           ("-20.7e-3", "Rational('-0.0207')"),
                           ("0.0000000000207", "Rational('0.0000000000207')"),
                           (887 * 10 ** 14, "Rational(887" + "0" * 14 + ")"),
-                          ("-287/8290", "-287/8290")),
+                          ("27/63", "Rational(3, 7)"),
+                          ("-287/8290", "Rational(-287, 8290)"),
+                          ("12345678901234567890123456/1234567",
+                           "Rational(12345678901234567890123456, 1234567)"),),
                          ids=lambda p: str(p))
 def test_repr(value, repr_):
     q = Rational(value)
