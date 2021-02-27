@@ -78,7 +78,7 @@ rnq_adjust_quot(uint64_t *num, uint64_t *den, bool neg, rn_prec_t to_prec) {
 
 static inline int
 rnq_magnitude(uint64_t num, uint64_t den) {
-    return U64_MAGNITUDE(num) - U64_MAGNITUDE(den);
+    return U64_MAGNITUDE(num) - U64_MAGNITUDE(den) - (num < den);
 }
 
 static inline PyObject *

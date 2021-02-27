@@ -63,26 +63,42 @@ rnp_from_number(PyIntQuot *rnp, PyObject *num) {
 }
 
 // pre-condition: x > 0
-static inline PyObject *
-pylong_floor_log10(PyObject *x) {
+static inline Py_ssize_t
+pylong_magnitude(PyObject *x) {
     double d = PyLong_AsDouble(x);
-    if (d == -1.0 && PyErr_Occurred())
-        return NULL;
+    if (d == -1.0 && PyErr_Occurred()) {
+        PyObject *s = NULL;
+        Py_ssize_t n;
+        PyErr_Clear();
+        s = PyObject_Str(x);
+        if (s == NULL)
+            return -1;
+        n = PyObject_Size(s);
+        Py_DECREF(s);
+        return n - 1;
+    }
     double l = log10(d);
-    return PyLong_FromDouble(l);
+    return (Py_ssize_t)l;
 }
 
 static inline PyObject *
 rnp_magnitude(PyIntQuot *quot) {
     PyObject *res = NULL;
     PyObject *abs_num = NULL;
-    PyObject *magn_num = NULL;
-    PyObject *magn_den = NULL;
+    Py_ssize_t magn_num;
+    Py_ssize_t magn_den;
+    Py_ssize_t magn_quot;
 
     ASSIGN_AND_CHECK_NULL(abs_num, PyNumber_Absolute(quot->numerator));
-    ASSIGN_AND_CHECK_NULL(magn_num, pylong_floor_log10(abs_num));
-    ASSIGN_AND_CHECK_NULL(magn_den, pylong_floor_log10(quot->denominator));
-    ASSIGN_AND_CHECK_NULL(res, PyNumber_Subtract(magn_num, magn_den));
+    magn_num = pylong_magnitude(abs_num);
+    if (magn_num == -1)
+        goto ERROR;
+    magn_den = pylong_magnitude(quot->denominator);
+    if (magn_den == -1)
+        goto ERROR;
+    magn_quot = magn_num - magn_den -
+                PyObject_RichCompareBool(abs_num, quot->denominator, Py_LT);
+    ASSIGN_AND_CHECK_NULL(res, PyLong_FromSsize_t(magn_quot));
     goto CLEAN_UP;
 
 ERROR:
@@ -90,8 +106,6 @@ ERROR:
 
 CLEAN_UP:
     Py_XDECREF(abs_num);
-    Py_XDECREF(magn_num);
-    Py_XDECREF(magn_den);
     return res;
 }
 
