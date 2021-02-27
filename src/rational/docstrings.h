@@ -81,6 +81,29 @@ PyDoc_STRVAR(
     "    ValueError: `d` can not be converted to a :class:`Rational`.\n\n"
 );
 
+PyDoc_STRVAR(
+    Rational_rounded_doc,
+    "Return `num` / `den`, rounded to `n_digits` number of fractional digits"
+    ".\n\n"
+    "Args:\n"
+    "   num (numbers.Rational): numerator\n"
+    "   den (numbers.Rational): denominator\n"
+    "   n_digits (Optional[int]): number of fractional digits (default: 0)\n\n"
+    "Returns:\n"
+    "    :class:`Rational` instance, equal to `round(Rational(num, den), "
+    "        n_digits)\n\n"
+    "Raises:\n"
+    "    TypeError: `num` or `den` is not a `Rational` and ca not be "
+    "        converted to a `Rational`.\n"
+    "    TypeError: `n_digits` is given, but not of type `int`.\n"
+    "    ValueError: `n_digits` is given, but not >= 0.\n"
+    "    ValueError: `n_digits` is given, but not <= `MAX_DEC_PRECISION`.\n"
+    "    ValueError: `value` can not be converted to a `Rational` (with a "
+    "number\n"
+    "        of fractional digits <= `MAX_DEC_PRECISION`).\n\n"
+    ":class:`Rational` instances are immutable.\n\n"
+);
+
 // Rational properties
 
 PyDoc_STRVAR(

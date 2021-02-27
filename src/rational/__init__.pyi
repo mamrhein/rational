@@ -39,6 +39,10 @@ class Rational(numbers.Rational):
     @classmethod
     def from_decimal(cls: Type[Rational], d: RationalT) -> Rational:
         ...
+    @classmethod
+    def rounded(cls: Type[Rational], numerator: RationalT,
+                denominator: RationalT, n_digits: int) -> Rational:
+        ...
     @property
     def _prec(self) -> Optional[int]:
         ...

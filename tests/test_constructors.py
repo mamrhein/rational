@@ -299,3 +299,30 @@ def test_copy(value):
     rn = Rational(value)
     assert copy.copy(rn) is rn
     assert copy.deepcopy(rn) is rn
+
+
+@pytest.mark.parametrize(("num", "den", "n_digits"),
+                         ((compact_ratio.numerator, compact_ratio.denominator,
+                           None),
+                          (small_ratio.numerator, small_ratio.denominator,
+                           None),
+                          (large_ratio.numerator, -large_ratio.denominator, 2),
+                          (8290, -10000, -2),
+                          (small_coeff, large_coeff, 5),
+                          (large_coeff, small_coeff, 0),
+                          (-compact_coeff, -large_ratio, 4),
+                          (-small_ratio, -compact_coeff, 0),
+                          (compact_ratio, -large_ratio, 20),
+                          (-small_ratio, compact_ratio, -3),),
+                         ids=("compact", "small", "large", "frac-only",
+                              "small/large", "large/small",
+                              "compact/large-ratio",
+                              "small-ratio/compact",
+                              "compact-ratio/large-ratio",
+                              "small-ratio/compact-ratio"))
+def test_rational_rounded(num, den, n_digits):
+    rn = Rational.rounded(num, den, n_digits)
+    assert isinstance(rn, Rational)
+    f = round(Fraction(num, den), n_digits)
+    assert rn.numerator == f.numerator
+    assert rn.denominator == f.denominator

@@ -270,7 +270,7 @@ rnp_adjusted(PyIntQuot *trgt, PyIntQuot *src, rn_prec_t to_prec) {
     PyObject *t = NULL;
     PyObject *s = NULL;
 
-    ASSIGN_AND_CHECK_NULL(t, PyLong_FromLong(abs(to_prec)));
+    ASSIGN_AND_CHECK_NULL(t, PyLong_FromLong(ABS(to_prec)));
     ASSIGN_AND_CHECK_NULL(s, PyNumber_Power(PyTEN, t, Py_None));
     Py_CLEAR(t);
     if (to_prec >= 0) {
