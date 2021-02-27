@@ -76,7 +76,7 @@ rnq_adjust_quot(uint64_t *num, uint64_t *den, bool neg, rn_prec_t to_prec) {
     return 0;
 }
 
-static inline int
+static inline Py_ssize_t
 rnq_magnitude(uint64_t num, uint64_t den) {
     return U64_MAGNITUDE(num) - U64_MAGNITUDE(den) - (num < den);
 }

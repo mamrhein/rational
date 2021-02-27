@@ -281,12 +281,45 @@ rnd_from_quot(uint128_t *coeff, rn_exp_t *exp, uint64_t num, uint64_t den) {
     return 0;
 }
 
-static inline int
+static inline Py_ssize_t
 rnd_magnitude(uint128_t coeff, rn_exp_t exp) {
     if (U128_HI(coeff) == 0)
         return U64_MAGNITUDE(U128_LO(coeff)) + exp;
     else
         return U128_MAGNITUDE(coeff) + exp;
+}
+
+// pre-condition: same magnitude
+static inline int
+rnd_cmp(uint128_t x_coeff, rn_exp_t x_exp, uint128_t y_coeff, rn_exp_t y_exp) {
+    uint8_t e;
+    if (x_exp > y_exp) {
+        e = x_exp - y_exp;  // 0 < e <= 38
+        if (e <= UINT64_10_POW_N_CUTOFF) {
+            uint64_t sh = u64_10_pow_n(e);
+            u128_imul_u64(&x_coeff, sh);
+        }
+        else {
+            uint64_t sh = u64_10_pow_n(UINT64_10_POW_N_CUTOFF);
+            u128_imul_u64(&x_coeff, sh);
+            sh = u64_10_pow_n(e - UINT64_10_POW_N_CUTOFF);
+            u128_imul_u64(&x_coeff, sh);
+        }
+    }
+    else if (y_exp > x_exp) {
+        e = y_exp - x_exp;  // 0 < e <= 38
+        if (e <= UINT64_10_POW_N_CUTOFF) {
+            uint64_t sh = u64_10_pow_n(e);
+            u128_imul_u64(&y_coeff, sh);
+        }
+        else {
+            uint64_t sh = u64_10_pow_n(UINT64_10_POW_N_CUTOFF);
+            u128_imul_u64(&y_coeff, sh);
+            sh = u64_10_pow_n(e - UINT64_10_POW_N_CUTOFF);
+            u128_imul_u64(&y_coeff, sh);
+        }
+    }
+    return u128_cmp(x_coeff, y_coeff);
 }
 
 static inline error_t

@@ -81,9 +81,8 @@ pylong_magnitude(PyObject *x) {
     return (Py_ssize_t)l;
 }
 
-static inline PyObject *
+static inline Py_ssize_t
 rnp_magnitude(PyIntQuot *quot) {
-    PyObject *res = NULL;
     PyObject *abs_num = NULL;
     Py_ssize_t magn_num;
     Py_ssize_t magn_den;
@@ -98,15 +97,15 @@ rnp_magnitude(PyIntQuot *quot) {
         goto ERROR;
     magn_quot = magn_num - magn_den -
                 PyObject_RichCompareBool(abs_num, quot->denominator, Py_LT);
-    ASSIGN_AND_CHECK_NULL(res, PyLong_FromSsize_t(magn_quot));
     goto CLEAN_UP;
 
 ERROR:
     assert(PyErr_Occurred());
+    magn_quot = -1;
 
 CLEAN_UP:
     Py_XDECREF(abs_num);
-    return res;
+    return magn_quot;
 }
 
 static inline int

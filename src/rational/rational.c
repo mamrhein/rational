@@ -685,28 +685,33 @@ Rational_precision_get(RationalObject *self, void *closure UNUSED) {
     return PyLong_FromLong(prec);
 }
 
-static PyObject *
-Rational_magnitude_get(RationalObject *self, void *closure UNUSED) {
-    int magn;
-
-    if (self->sign == 0) {
-        PyErr_SetString(PyExc_OverflowError, "Result would be '-Infinity'.");
-        return NULL;
-    }
+static inline Py_ssize_t
+rn_magnitude(RationalObject *self) {
     switch (self->variant) {
         case RN_FPDEC:
-            magn = rnd_magnitude(self->coeff, self->exp);
-            break;
+            return rnd_magnitude(self->coeff, self->exp);
         case RN_U64_QUOT:
-            magn = rnq_magnitude(self->u64_num, self->u64_den);
-            break;
+            return rnq_magnitude(self->u64_num, self->u64_den);
         case RN_PYINT_QUOT:
             return rnp_magnitude(RN_PYINT_QUOT_PTR(self));
         default:
             PyErr_SetString(PyExc_RuntimeError,
                             "Corrupted internal representation.");
-            return NULL;
+            return -1;
     }
+}
+
+static PyObject *
+Rational_magnitude_get(RationalObject *self, void *closure UNUSED) {
+    Py_ssize_t magn;
+
+    if (self->sign == 0) {
+        PyErr_SetString(PyExc_OverflowError, "Result would be '-Infinity'.");
+        return NULL;
+    }
+    magn = rn_magnitude(self);
+    if (PyErr_Occurred())
+        return NULL;
     return PyLong_FromLong(magn);
 }
 
@@ -940,6 +945,8 @@ Rational_hash(RationalObject *self) {
     PyObject *inv_den = NULL;
     PyObject *abs_num = NULL;
     PyObject *t = NULL;
+
+    rn_assert_num_den(self);
     /* To make sure that the hash of a Rational equals the hash of a
      * numerically equal integer, float or Fraction instance, we follow the
      * implementation in fractions.py.
@@ -949,7 +956,7 @@ Rational_hash(RationalObject *self) {
                                                   PyHASH_MODULUS_2,
                                                   PyHASH_MODULUS));
     if (PyObject_RichCompareBool(inv_den, PyZERO, Py_EQ))
-        res = PyHASH_INF;
+        res = PyLong_AsLong(PyHASH_INF);
     else {
         // Optimized implementation from Python 3.9
         ASSIGN_AND_CHECK_NULL(abs_num, PyNumber_Absolute(self->numerator));
@@ -987,12 +994,33 @@ Rational_deepcopy(RationalObject *self, PyObject *memo UNUSED) {
 
 static inline int
 Rational_cmp(RationalObject *self, RationalObject *other) {
+    Py_ssize_t smagn, omagn;
     int8_t cmp = CMP(self->sign, other->sign);
     if (cmp != 0 || self->sign == 0)
         return cmp;
-    if (self->variant == RN_PYINT_QUOT)
-        return rnp_cmp(RN_PYINT_QUOT_PTR(self), RN_PYINT_QUOT_PTR(other));
-    PyErr_SetString(PyExc_RuntimeError, "Corrupted internal representation.");
+    // here: self != 0 and other != 0, same sign
+    smagn = rn_magnitude(self);
+    omagn = rn_magnitude(other);
+    if (smagn != omagn)
+        return CMP(smagn, omagn) * self->sign;
+    // same magnitude and same sign
+    switch (self->variant) {
+        case RN_FPDEC:
+            if (other->variant == RN_FPDEC) {
+                return rnd_cmp(self->coeff, self->exp,
+                               other->coeff, other->exp);
+            }
+            FALLTHROUGH;
+        case RN_U64_QUOT:
+            rn_assert_num_den(self);
+            FALLTHROUGH;
+        case RN_PYINT_QUOT:
+            rn_assert_num_den(other);
+            return rnp_cmp(RN_PYINT_QUOT_PTR(self), RN_PYINT_QUOT_PTR(other));
+        default:
+            PyErr_SetString(PyExc_RuntimeError,
+                            "Corrupted internal representation.");
+    }
     return 0;
 }
 
