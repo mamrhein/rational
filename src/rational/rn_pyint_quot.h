@@ -240,7 +240,7 @@ rnp_div_rounded(PyObject *divident, PyObject *divisor) {
             else if (PyObject_RichCompareBool(t, divisor, Py_EQ)) {
                 Py_CLEAR(t);
                 ASSIGN_AND_CHECK_NULL(t, PyNumber_Remainder(q, PyTWO));
-                if (PyObject_RichCompareBool(q, PyZERO, Py_NE))
+                if (PyObject_RichCompareBool(t, PyZERO, Py_NE))
                     q = PyNumber_InPlaceAdd(q, PyONE);
             }
             break;
