@@ -165,9 +165,9 @@ CLEAN_UP:
 }
 
 static PyObject *
-rnp_div_rounded(PyObject *divident, PyObject *divisor) {
+rnp_div_rounded(PyObject *divident, PyObject *divisor,
+                enum RN_ROUNDING_MODE rounding_mode) {
     // divisor must be >= 0 !!!
-    enum RN_ROUNDING_MODE rounding_mode = rn_rounding_mode();
     PyObject *t = NULL;
     PyObject *q = NULL;
     PyObject *r = NULL;
@@ -278,7 +278,8 @@ CLEAN_UP:
 }
 
 static int
-rnp_adjusted(PyIntQuot *trgt, PyIntQuot *src, rn_prec_t to_prec) {
+rnp_adjusted(PyIntQuot *trgt, PyIntQuot *src, rn_prec_t to_prec,
+             enum RN_ROUNDING_MODE rounding_mode) {
     int rc = 0;
     PyObject *t = NULL;
     PyObject *s = NULL;
@@ -289,7 +290,8 @@ rnp_adjusted(PyIntQuot *trgt, PyIntQuot *src, rn_prec_t to_prec) {
     if (to_prec >= 0) {
         ASSIGN_AND_CHECK_NULL(t, PyNumber_Multiply(src->numerator, s));
         ASSIGN_AND_CHECK_NULL(trgt->numerator,
-                              rnp_div_rounded(t, src->denominator));
+                              rnp_div_rounded(t, src->denominator,
+                                              rounding_mode));
         Py_INCREF(s);
         trgt->denominator = s;
         if (rnp_reduce_inplace(trgt) == 0)
@@ -298,7 +300,8 @@ rnp_adjusted(PyIntQuot *trgt, PyIntQuot *src, rn_prec_t to_prec) {
     else {
         ASSIGN_AND_CHECK_NULL(t, PyNumber_Multiply(src->denominator, s));
         ASSIGN_AND_CHECK_NULL(trgt->numerator, 
-                              rnp_div_rounded(src->numerator, t));
+                              rnp_div_rounded(src->numerator, t,
+                                              rounding_mode));
         ASSIGN_AND_CHECK_NULL(trgt->numerator, 
                               PyNumber_InPlaceMultiply(trgt->numerator, s));
         Py_INCREF(PyONE);

@@ -324,7 +324,7 @@ rnd_cmp(uint128_t x_coeff, rn_exp_t x_exp, uint128_t y_coeff, rn_exp_t y_exp) {
 
 static inline error_t
 rnd_adjust_coeff_exp(uint128_t *coeff, rn_exp_t *exp, bool neg,
-                     rn_prec_t to_prec) {
+                     rn_prec_t to_prec, enum RN_ROUNDING_MODE rounding_mode) {
     int sh = -(to_prec + *exp);
 
     if (sh > UINT64_10_POW_N_CUTOFF)
@@ -333,7 +333,7 @@ rnd_adjust_coeff_exp(uint128_t *coeff, rn_exp_t *exp, bool neg,
     if (sh > 0) {
         uint128_t t;
         U128_FROM_LO_HI(&t, u64_10_pow_n(sh), 0ULL);
-        u128_idiv_rounded(coeff, &t, neg);
+        u128_idiv_rounded(coeff, &t, neg, rounding_mode);
         *exp = -to_prec;
     }
     return 0;

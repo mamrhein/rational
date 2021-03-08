@@ -34,7 +34,7 @@ def test_true(value):
                          ids=("None", "0", "0/-999999999"))
 def test_false(value):
     if isinstance(value, tuple):
-        q = Rational(*value);
+        q = Rational(*value)
     else:
         q = Rational(value)
     assert not q

@@ -67,14 +67,14 @@ ERROR:
 }
 
 static void
-u64_idiv_rounded(uint64_t *divident, uint64_t divisor, bool neg) {
-    enum RN_ROUNDING_MODE rounding = rn_rounding_mode();
+u64_idiv_rounded(uint64_t *divident, uint64_t divisor, bool neg,
+                 enum RN_ROUNDING_MODE rounding_mode) {
     uint64_t quot, rem, tie;
 
     rem = *divident % divisor;
     *divident /= divisor;
     quot = *divident;
-    switch (rounding) {
+    switch (rounding_mode) {
         case RN_ROUND_05UP:
             // Round down unless last digit is 0 or 5
             if (quot % 5 == 0)
@@ -122,14 +122,14 @@ u64_idiv_rounded(uint64_t *divident, uint64_t divisor, bool neg) {
 }
 
 static void
-u128_idiv_rounded(uint128_t *divident, const uint128_t *divisor, bool neg) {
-    enum RN_ROUNDING_MODE rounding = rn_rounding_mode();
+u128_idiv_rounded(uint128_t *divident, const uint128_t *divisor, bool neg,
+                  enum RN_ROUNDING_MODE rounding_mode) {
     uint128_t quot, rem, tie;
     int cmp;
 
     u128_idiv_u128(&rem, divident, divisor);
     quot = *divident;
-    switch (rounding) {
+    switch (rounding_mode) {
         case RN_ROUND_05UP:
             // Round down unless last digit is 0 or 5
             if (u128_idiv_u32(&quot, 5) == 0)

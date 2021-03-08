@@ -39,7 +39,8 @@ rnq_reduce_quot(uint64_t *num, uint64_t *den) {
 }
 
 static inline error_t
-rnq_adjust_quot(uint64_t *num, uint64_t *den, bool neg, rn_prec_t to_prec) {
+rnq_adjust_quot(uint64_t *num, uint64_t *den, bool neg, rn_prec_t to_prec,
+                enum RN_ROUNDING_MODE rounding_mode) {
     unsigned int p = ABS(to_prec);
     uint128_t n, d;
     uint64_t t;
@@ -51,7 +52,7 @@ rnq_adjust_quot(uint64_t *num, uint64_t *den, bool neg, rn_prec_t to_prec) {
         t = u64_10_pow_n(p);
         u64_mul_u64(&n, *num, t);
         U128_FROM_LO_HI(&d, *den, 0ULL);
-        u128_idiv_rounded(&n, &d, neg);
+        u128_idiv_rounded(&n, &d, neg, rounding_mode);
         p = u128_eliminate_trailing_zeros(&n, UINT64_10_POW_N_CUTOFF);
         t /= u64_10_pow_n(p);
         if (U128_HI(n) != 0)
@@ -64,13 +65,14 @@ rnq_adjust_quot(uint64_t *num, uint64_t *den, bool neg, rn_prec_t to_prec) {
         U128_FROM_LO_HI(&n, *num, 0ULL);
         t = u64_10_pow_n(p);
         u64_mul_u64(&d, *den, t);
-        u128_idiv_rounded(&n, &d, neg);
-        // n < 2^64, d > 1 => result < 2^64
+        u128_idiv_rounded(&n, &d, neg, rounding_mode);
+        // n < 2^64, d > t => result < 2^64
+        u128_imul_u64(&n, t);
         *num = U128_LO(n);
         *den = 1;
     }
     else {
-        u64_idiv_rounded(num, *den, neg);
+        u64_idiv_rounded(num, *den, neg, rounding_mode);
         *den = 1;
     }
     return 0;
