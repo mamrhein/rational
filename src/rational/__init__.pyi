@@ -33,15 +33,16 @@ class Rational(numbers.Rational):
             -> Rational:
         ...
     @classmethod
-    def from_float(cls: Type[Rational], f: Union[float, numbers.Integral]) -> \
-            Rational:
+    def from_float(cls: Type[Rational], f: Union[float, numbers.Integral]) \
+            -> Rational:
         ...
     @classmethod
     def from_decimal(cls: Type[Rational], d: RationalT) -> Rational:
         ...
     @classmethod
     def rounded(cls: Type[Rational], numerator: RationalT,
-                denominator: RationalT, n_digits: int) -> Rational:
+                denominator: RationalT, n_digits: numbers.Integral) \
+            -> Rational:
         ...
     @property
     def _prec(self) -> Optional[int]:
@@ -61,7 +62,7 @@ class Rational(numbers.Rational):
     @property
     def imag(self) -> int:
         ...
-    def adjusted(self, precision: Optional[int] = ...) -> Rational:
+    def adjusted(self, precision: numbers.Integral) -> Rational:
         ...
     def quantize(self, quant: RationalT) -> Rational:
         ...
@@ -145,7 +146,7 @@ class Rational(numbers.Rational):
     def __round__(self, ndigits: None = ...) -> int:
         ...
     @overload
-    def __round__(self, ndigits: int) -> Rational:
+    def __round__(self, ndigits: numbers.Integral) -> Rational:
         ...
 
 class Rounding(Enum):
