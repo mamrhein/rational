@@ -13,6 +13,7 @@
 from fractions import Fraction
 
 import pytest
+from hypothesis import given, strategies
 
 from rational import Rational
 
@@ -23,14 +24,24 @@ from rational import Rational
                           ("-0.00014", -4),
                           (0.4, -1),
                           ("0.1", -1),
-                          ((1, 33), -2)),
+                          ((1, 33), -2),
+                          ((8455, 15604), -1)),
                          ids=("compact", "large", "fraction", "0.4", "0.1",
-                              "1/33"))
-def test_magnitude(value, magn):
+                              "1/33", "8455/15604"))
+def test_magnitude_exam(value, magn):
     if isinstance(value, tuple):
         rn = Rational(*value)
     else:
         rn = Rational(value)
+    assert rn.magnitude == magn
+
+
+@given(value=strategies.decimals(allow_nan=False, allow_infinity=False)
+       .filter(lambda x: x != 0))
+def test_magnitude_hypo_dec(value):
+    rn = Rational(value)
+    _, coeff, exp = value.as_tuple()
+    magn = len(coeff) + exp - 1
     assert rn.magnitude == magn
 
 
