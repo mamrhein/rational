@@ -320,7 +320,7 @@ def test_copy(value):
                               "small-ratio/compact",
                               "compact-ratio/large-ratio",
                               "small-ratio/compact-ratio"))
-def test_rational_rounded(num, den, n_digits):
+def test_rational_rounded(with_round_half_even, num, den, n_digits):
     rn = Rational.rounded(num, den, n_digits)
     assert isinstance(rn, Rational)
     f = round(Fraction(num, den), n_digits)

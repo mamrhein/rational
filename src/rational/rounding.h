@@ -66,6 +66,25 @@ ERROR:
     return (enum RN_ROUNDING_MODE)rounding_mode;
 }
 
+static inline uint64_t
+u64_delta_rounded(bool neg, enum RN_ROUNDING_MODE rounding_mode) {
+    switch (rounding_mode) {
+        case RN_ROUND_05UP:
+        case RN_ROUND_UP:
+            return 1;
+        case RN_ROUND_CEILING:
+            if (!neg)
+                return 1;
+            return 0;
+        case RN_ROUND_FLOOR:
+            if (neg)
+                return 1;
+            return 0;
+        default:
+            return 0;
+    }
+}
+
 static void
 u64_idiv_rounded(uint64_t *divident, uint64_t divisor, bool neg,
                  enum RN_ROUNDING_MODE rounding_mode) {

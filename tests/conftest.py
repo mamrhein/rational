@@ -15,7 +15,7 @@
 
 import pytest
 
-from rational import Rounding
+from rational import Rounding, get_dflt_rounding_mode, set_dflt_rounding_mode
 
 
 @pytest.fixture(scope="session",
@@ -23,3 +23,17 @@ from rational import Rounding
                 ids=[rnd.name for rnd in Rounding])
 def rnd(request) -> Rounding:
     return Rounding[request.param]
+
+
+def dflt_round(rnd):
+    @pytest.fixture()
+    def closure():
+        prev_rnd = get_dflt_rounding_mode()
+        set_dflt_rounding_mode(rnd)
+        yield
+        set_dflt_rounding_mode(prev_rnd)
+    return closure
+
+
+with_round_half_up = dflt_round(Rounding.ROUND_HALF_UP)
+with_round_half_even = dflt_round(Rounding.ROUND_HALF_EVEN)

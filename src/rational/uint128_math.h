@@ -28,6 +28,7 @@ typedef struct uint128 {
 } uint128_t;
 
 static const uint128_t UINT128_ZERO = {0, 0};
+static const uint128_t UINT128_ONE = {1, 0};
 static const uint128_t UINT128_MAX = {UINT64_MAX, UINT64_MAX};
 
 #define UINT128_10_POW_N_CUTOFF (2 * UINT64_10_POW_N_CUTOFF)

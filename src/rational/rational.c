@@ -106,6 +106,27 @@ Rational_as_fraction(RationalObject *self, PyObject *args UNUSED);
 static error_t
 rn_assert_num_den(RationalObject *rn);
 
+// Consistency check
+
+static inline bool
+rn_is_consistent(RationalObject *rn) {
+    switch (rn->variant) {
+        case RN_FPDEC:
+            return ((rn->sign == 0 && rn->coeff == 0) ||
+                    (rn->sign != 0 && rn->coeff > 0));
+        case RN_U64_QUOT:
+            return rn->sign != 0 && rn->u64_num > 0 && rn->u64_den > 0;
+        case RN_PYINT_QUOT:
+            return rn->sign != 0 &&
+                   rn->numerator != NULL &&
+                   PyObject_RichCompareBool(rn->numerator, PyZERO, Py_NE) &&
+                   rn->denominator != NULL &&
+                   PyObject_RichCompareBool(rn->denominator, PyZERO, Py_GT);
+        default:
+            return false;
+    }
+}
+
 // Type checks
 
 static inline int
@@ -176,6 +197,21 @@ Rational_dealloc(RationalObject *self) {
     RATIONAL_ALLOC(type, self)
 
 static inline void
+rn_set_to_zero(RationalObject *rn) {
+    rn->variant = RN_FPDEC;
+    rn->sign = RN_SIGN_ZERO;
+    rn->coeff = UINT128_ZERO;
+    rn->exp = 0;
+    rn->prec = 0;
+    Py_XDECREF(rn->numerator);
+    Py_INCREF(PyZERO);
+    rn->numerator = PyZERO;
+    Py_XDECREF(rn->denominator);
+    Py_INCREF(PyONE);
+    rn->denominator = PyONE;
+}
+
+static inline void
 rn_optimize_pyquot(RationalObject *rn) {
     assert(rn->variant == RN_PYINT_QUOT);
     int64_t num = PyLong_AsLongLong(rn->numerator);
@@ -183,15 +219,22 @@ rn_optimize_pyquot(RationalObject *rn) {
         PyErr_Clear();
         return;
     }
+    if (num == 0) {
+        rn_set_to_zero(rn);
+        return;
+    }
+
     int64_t den = PyLong_AsLongLong(rn->denominator);
     if (PyErr_Occurred()) {
         PyErr_Clear();
         return;
     }
+
     if (num < 0)
         num = -num;
-    if (rnd_from_quot(&rn->coeff, &rn->exp, num, den) == 0)
+    if (rnd_from_quot(&rn->coeff, &rn->exp, num, den) == 0) {
         rn->variant = RN_FPDEC;
+    }
     else {
         rn->variant = RN_U64_QUOT;
         rn->u64_num = num;
@@ -278,6 +321,7 @@ CLEAN_UP:
     Py_XDECREF(abs_val);
     Py_XDECREF(hi);
     Py_XDECREF(lo);
+    assert(rn_is_consistent(self));
     return (PyObject *)self;
 }
 
@@ -311,6 +355,7 @@ RationalType_from_normalized_num_den(PyTypeObject *type, PyObject *numerator,
     Py_INCREF(denominator);
     self->denominator = denominator;
     rn_optimize_pyquot(self);
+    assert(rn_is_consistent(self));
     return (PyObject *)self;
 }
 
@@ -418,6 +463,7 @@ ERROR:
 CLEAN_UP:
     Py_XDECREF(numerator);
     Py_XDECREF(denominator);
+    assert(rn_is_consistent((RationalObject *)res));
     return res;
 }
 
@@ -491,6 +537,7 @@ ERROR:
 
 CLEAN_UP:
     Py_XDECREF(frac);
+    assert(rn_is_consistent((RationalObject *)res));
     return res;
 }
 
@@ -526,6 +573,7 @@ CLEAN_UP:
     Py_XDECREF(ratio);
     Py_XDECREF(numerator);
     Py_XDECREF(denominator);
+    assert(rn_is_consistent((RationalObject *)res));
     return res;
 }
 
@@ -548,6 +596,7 @@ ERROR:
 
 CLEAN_UP:
     Py_XDECREF(is_finite);
+    assert(rn_is_consistent((RationalObject *)res));
     return res;
 }
 
@@ -741,10 +790,20 @@ Rational_magnitude_get(RationalObject *self, void *closure UNUSED) {
         PyErr_SetString(PyExc_OverflowError, "Result would be '-Infinity'.");
         return NULL;
     }
-    magn = rn_magnitude(self);
-    if (PyErr_Occurred())
-        return NULL;
-    return PyLong_FromLong(magn);
+    switch (self->variant) {
+        case RN_FPDEC:
+            magn = rnd_magnitude(self->coeff, self->exp);
+            return PyLong_FromLong(magn);
+        case RN_U64_QUOT:
+            magn = rnq_magnitude(self->u64_num, self->u64_den);
+            return PyLong_FromLong(magn);
+        case RN_PYINT_QUOT:
+            return rnp_magnitude_pylong(RN_PYINT_QUOT_PTR(self));
+        default:
+            PyErr_SetString(PyExc_RuntimeError,
+                            "Corrupted internal representation.");
+            return NULL;
+    }
 }
 
 static error_t
@@ -1042,10 +1101,10 @@ Rational_cmp(RationalObject *self, RationalObject *other) {
                 return rnd_cmp(self->coeff, self->exp,
                                other->coeff, other->exp);
             }
-                FALLTHROUGH;
+            FALLTHROUGH;
         case RN_U64_QUOT:
             rn_assert_num_den(self);
-                FALLTHROUGH;
+            FALLTHROUGH;
         case RN_PYINT_QUOT:
             rn_assert_num_den(other);
             return rnp_cmp(RN_PYINT_QUOT_PTR(self), RN_PYINT_QUOT_PTR(other));
@@ -1121,6 +1180,8 @@ Rational_richcompare(RationalObject *self, PyObject *other, int op) {
     // Rational
     if (Rational_Check(other)) {
         int r = Rational_cmp(self, (RationalObject *)other);
+        if (PyErr_Occurred())
+            return NULL;
         Py_RETURN_RICHCOMPARE(r, 0, op);
     }
 
@@ -1414,6 +1475,7 @@ ERROR:
     Py_CLEAR(res);
 
 CLEAN_UP:
+    assert(rn_is_consistent(res));
     return (PyObject *)res;
 }
 
@@ -1572,17 +1634,23 @@ rn_adjusted(RationalObject *self, rn_prec_t to_prec,
         case RN_FPDEC:
             if (rnd_adjust_coeff_exp(&res->coeff, &res->exp,
                                      res->sign == RN_SIGN_NEG, to_prec,
-                                     rounding_mode) < 0)
-                goto FALLBACK;
+                                     rounding_mode) == 0) {
+                if (U128_EQ_ZERO(res->coeff))
+                    res->sign = RN_SIGN_ZERO;
+            }
+            else goto FALLBACK;
             break;
         case RN_U64_QUOT:
             if (rnq_adjust_quot(&res->u64_num, &res->u64_den,
                                 res->sign == RN_SIGN_NEG, to_prec,
-                                rounding_mode) < 0)
-                goto FALLBACK;
-            if (rnd_from_quot(&res->coeff, &res->exp,
-                              res->u64_num, res->u64_den) == 0)
-                res->variant = RN_FPDEC;
+                                rounding_mode) == 0) {
+                if (res->u64_num == 0)
+                    rn_set_to_zero(res);
+                else if (rnd_from_quot(&res->coeff, &res->exp,
+                                       res->u64_num, res->u64_den) == 0)
+                    res->variant = RN_FPDEC;
+            }
+            else goto FALLBACK;
             break;
         case RN_PYINT_QUOT: {
             CHECK_RC(rnp_adjusted(RN_PYINT_QUOT_PTR(res),
@@ -1600,7 +1668,7 @@ rn_adjusted(RationalObject *self, rn_prec_t to_prec,
     goto CLEAN_UP;
 
 FALLBACK:
-    if (rn_assert_num_den(res) == 0) {
+    if (rn_assert_num_den(self) == 0) {
         CHECK_RC(rnp_adjusted(RN_PYINT_QUOT_PTR(res),
                               RN_PYINT_QUOT_PTR(self), to_prec,
                               rounding_mode));
@@ -1615,6 +1683,7 @@ ERROR:
     Py_CLEAR(res);
 
 CLEAN_UP:
+    assert(rn_is_consistent(res));
     return (PyObject *)res;
 }
 
@@ -1720,6 +1789,7 @@ CLEAN_UP:
     Py_XDECREF(num);
     Py_XDECREF(den);
     Py_XDECREF(t);
+    assert(rn_is_consistent(res));
     return (PyObject *)res;
 }
 
@@ -2044,6 +2114,10 @@ rational_exec(PyObject *module) {
     PyObject *math = NULL;
     ASSIGN_AND_CHECK_NULL(math, PyImport_ImportModule("math"));
     ASSIGN_AND_CHECK_NULL(PyNumber_gcd, PyObject_GetAttrString(math, "gcd"));
+    ASSIGN_AND_CHECK_NULL(PyNumber_log10, PyObject_GetAttrString(math,
+                                                                 "log10"));
+    ASSIGN_AND_CHECK_NULL(PyNumber_floor, PyObject_GetAttrString(math,
+                                                                 "floor"));
     /* Import from sys */
     PyObject *sys = NULL;
     PyObject *hash_info = NULL;
@@ -2107,6 +2181,8 @@ ERROR:
     Py_CLEAR(Rounding);
     Py_CLEAR(get_dflt_rounding_mode);
     Py_CLEAR(PyNumber_gcd);
+    Py_CLEAR(PyNumber_log10);
+    Py_CLEAR(PyNumber_floor);
     Py_CLEAR(PyLong_bit_length);
     Py_CLEAR(PyZERO);
     Py_CLEAR(PyONE);

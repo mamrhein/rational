@@ -20,6 +20,8 @@ $Revision$
 
 // Python math functions
 static PyObject *PyNumber_gcd = NULL;
+static PyObject *PyNumber_log10 = NULL;
+static PyObject *PyNumber_floor = NULL;
 
 // helper functions
 
@@ -62,50 +64,48 @@ rnp_from_number(PyIntQuot *rnp, PyObject *num) {
     return rnp_from_convertable(rnp, num);
 }
 
-// pre-condition: x > 0
-static inline Py_ssize_t
-pylong_magnitude(PyObject *x) {
-    double d = PyLong_AsDouble(x);
-    if (d == -1.0 && PyErr_Occurred()) {
-        PyObject *s = NULL;
-        Py_ssize_t n;
-        PyErr_Clear();
-        s = PyObject_Str(x);
-        if (s == NULL)
-            return -1;
-        n = PyObject_Size(s);
-        Py_DECREF(s);
-        return n - 1;
-    }
-    double l = log10(d);
-    return (Py_ssize_t)l;
-}
-
-static inline Py_ssize_t
-rnp_magnitude(PyIntQuot *quot) {
+static inline PyObject *
+rnp_magnitude_pylong(PyIntQuot *quot) {
     PyObject *abs_num = NULL;
-    Py_ssize_t magn_num;
-    Py_ssize_t magn_den;
-    Py_ssize_t magn_quot;
+    PyObject *log10_num = NULL;
+    PyObject *log10_den = NULL;
+    PyObject *log10_quot = NULL;
+    PyObject *magn_quot = NULL;
 
     ASSIGN_AND_CHECK_NULL(abs_num, PyNumber_Absolute(quot->numerator));
-    magn_num = pylong_magnitude(abs_num);
-    if (magn_num == -1)
-        goto ERROR;
-    magn_den = pylong_magnitude(quot->denominator);
-    if (magn_den == -1)
-        goto ERROR;
-    magn_quot = magn_num - magn_den -
-                PyObject_RichCompareBool(abs_num, quot->denominator, Py_LT);
+    ASSIGN_AND_CHECK_NULL(log10_num,
+                          PyObject_CallFunctionObjArgs(PyNumber_log10,
+                                                       abs_num, NULL));
+    ASSIGN_AND_CHECK_NULL(log10_den,
+                          PyObject_CallFunctionObjArgs(PyNumber_log10,
+                                                       quot->denominator,
+                                                       NULL));
+    ASSIGN_AND_CHECK_NULL(log10_quot, PyNumber_Subtract(log10_num, log10_den));
+    ASSIGN_AND_CHECK_NULL(magn_quot,
+                          PyObject_CallFunctionObjArgs(PyNumber_floor,
+                                                       log10_quot, NULL));
     goto CLEAN_UP;
 
 ERROR:
     assert(PyErr_Occurred());
-    magn_quot = -1;
 
 CLEAN_UP:
     Py_XDECREF(abs_num);
+    Py_XDECREF(log10_num);
+    Py_XDECREF(log10_den);
+    Py_XDECREF(log10_quot);
     return magn_quot;
+}
+
+static inline Py_ssize_t
+rnp_magnitude(PyIntQuot *quot) {
+    Py_ssize_t res;
+    PyObject *magn = rnp_magnitude_pylong(quot);
+    if (magn == NULL)
+        return -1;
+    res = PyLong_AsLong(magn);
+    Py_DECREF(magn);
+    return res;
 }
 
 static inline int

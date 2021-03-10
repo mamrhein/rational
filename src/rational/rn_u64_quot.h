@@ -16,6 +16,11 @@ $Revision$
 #include "rounding.h"
 #include "uint64_math.h"
 
+static inline Py_ssize_t
+rnq_magnitude(uint64_t num, uint64_t den) {
+    return (Py_ssize_t)floor(log10(num) - log10(den));
+}
+
 static inline uint64_t
 gcd(uint64_t x, uint64_t y) {
     uint64_t t;
@@ -41,9 +46,35 @@ rnq_reduce_quot(uint64_t *num, uint64_t *den) {
 static inline error_t
 rnq_adjust_quot(uint64_t *num, uint64_t *den, bool neg, rn_prec_t to_prec,
                 enum RN_ROUNDING_MODE rounding_mode) {
+    assert(*num > 0 && *den > 0);
     unsigned int p = ABS(to_prec);
     uint128_t n, d;
     uint64_t t;
+
+    if (rnq_magnitude(*num, *den) < -to_prec - 1) {
+        // num / den < 10 ^ to_prec / 2
+        if (u64_delta_rounded(neg, rounding_mode) == 0) {
+            *num = 0;
+            *den = 1;
+        }
+        else {
+            if (p > UINT64_10_POW_N_CUTOFF)
+                return -1;
+            if (to_prec == 0) {
+                *num = 1;
+                *den = 1;
+            }
+            else if (to_prec > 0) {
+                *num = 1;
+                *den = u64_10_pow_n(to_prec);
+            }
+            else {
+                *num = u64_10_pow_n(-to_prec);
+                *den = 1;
+            }
+        }
+        return 0;
+    }
 
     if (p > UINT64_10_POW_N_CUTOFF)
         return -1;
@@ -76,11 +107,6 @@ rnq_adjust_quot(uint64_t *num, uint64_t *den, bool neg, rn_prec_t to_prec,
         *den = 1;
     }
     return 0;
-}
-
-static inline Py_ssize_t
-rnq_magnitude(uint64_t num, uint64_t den) {
-    return U64_MAGNITUDE(num) - U64_MAGNITUDE(den) - (num < den);
 }
 
 static inline PyObject *

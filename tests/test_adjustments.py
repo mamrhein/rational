@@ -18,7 +18,7 @@ import operator
 import sys
 
 import pytest
-from hypothesis import given, strategies
+from hypothesis import HealthCheck, given, settings, strategies
 
 from rational import (
     Rational, Rounding, get_dflt_rounding_mode, set_dflt_rounding_mode)
@@ -30,14 +30,6 @@ ctx.prec = 3350
 RN_MAX_PREC = 9999
 
 
-@pytest.fixture()
-def round_half_up():
-    rnd = get_dflt_rounding_mode()
-    set_dflt_rounding_mode(Rounding.ROUND_HALF_UP)
-    yield
-    set_dflt_rounding_mode(rnd)
-
-
 @pytest.mark.parametrize(("value", "prec", "numerator"),
                          (("17.849", 1, 178),
                           ("17.845", 2, 1785),
@@ -45,7 +37,7 @@ def round_half_up():
                            int("1" * 3294 + "000")),
                           ("2/777", 3, 3)),
                          ids=("compact1", "compact2", "large", "fraction"))
-def test_adjust_round_half_up(round_half_up, value, prec, numerator):
+def test_adjust_half_up(with_round_half_up, value, prec, numerator):
     rn = Rational(value)
     adj = rn.adjusted(prec)
     assert adj._prec == prec
@@ -54,9 +46,10 @@ def test_adjust_round_half_up(round_half_up, value, prec, numerator):
     assert adj.denominator == frac.denominator
 
 
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(value=strategies.fractions(),
        prec=strategies.integers(min_value=-RN_MAX_PREC, max_value=RN_MAX_PREC))
-def test_adjust_dflt_round_hypo(value, prec):
+def test_adjust_half_even_hypo_frac(with_round_half_even, value, prec):
     rn = Rational(value)
     adj = rn.adjusted(prec)
     assert adj._prec == (prec if value != 0 else 0)
@@ -71,7 +64,7 @@ def test_adjust_dflt_round_hypo(value, prec):
                           "0.00015"),
                          ids=("compact", "large", "fraction"))
 @pytest.mark.parametrize("prec", (1, -3, 5), ids=("1", "-3", "5"))
-def test_adjust_round(rnd, value, prec):
+def test_adjust_exam(rnd, value, prec):
     set_dflt_rounding_mode(rnd)
     rn = Rational(value)
     adj = rn.adjusted(prec)
@@ -85,7 +78,7 @@ def test_adjust_round(rnd, value, prec):
 @given(value=strategies.decimals(allow_nan=False, allow_infinity=False),
        prec=strategies.integers(min_value=-RN_MAX_PREC,
                                 max_value=ctx.prec//10))
-def test_adjust_round_hypo(rnd, value, prec):
+def test_adjust_hypo_dec(rnd, value, prec):
     set_dflt_rounding_mode(rnd)
     rn = Rational(value)
     adj = rn.adjusted(prec)
@@ -130,8 +123,7 @@ def test_adjust_limits_exceeded(prec):
                           "0.0025",
                           "12345678901234567e12"),
                          ids=("compact", "large", "fraction", "int"))
-def test_quantize_dflt_round(value, quant):
-    set_dflt_rounding_mode(Rounding.ROUND_HALF_EVEN)
+def test_quantize_half_even(with_round_half_even, value, quant):
     rn = Rational(value)
     adj = rn.quantize(quant)
     # compute equivalent Fraction
@@ -159,7 +151,7 @@ def test_quantize_dflt_round(value, quant):
                               "large",
                               "fraction",
                               "int"))
-def test_quantize_round(rnd, value, quant):
+def test_quantize_exam(rnd, value, quant):
     set_dflt_rounding_mode(rnd)
     rn = Rational(value)
     adj = rn.quantize(quant)
@@ -175,7 +167,7 @@ def test_quantize_round(rnd, value, quant):
 @given(value=strategies.decimals(allow_nan=False, allow_infinity=False),
        quant=strategies.decimals(allow_nan=False, allow_infinity=False,
                                  places=3).filter(lambda x: x != 0))
-def test_quantize_decimal_hypo(rnd, value, quant):
+def test_quantize_hypo_dec(rnd, value, quant):
     set_dflt_rounding_mode(rnd)
     rn = Rational(value)
     adj = rn.quantize(quant)
@@ -191,8 +183,7 @@ def test_quantize_decimal_hypo(rnd, value, quant):
 @pytest.mark.parametrize("value",
                          ("17.5", "15"),
                          ids=("17.5", "15"))
-def test_quantize_to_non_decimal(value, quant):
-    set_dflt_rounding_mode(Rounding.ROUND_HALF_EVEN)
+def test_quantize_to_non_decimal(with_round_half_even, value, quant):
     rn = Rational(value)
     adj = rn.quantize(quant)
     # compute equivalent Fraction
@@ -202,10 +193,10 @@ def test_quantize_to_non_decimal(value, quant):
     assert adj.denominator == equiv.denominator
 
 
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(value=strategies.fractions(),
        quant=strategies.fractions().filter(lambda x: x != 0))
-def test_quantize_frac_hypo(value, quant):
-    set_dflt_rounding_mode(Rounding.ROUND_HALF_EVEN)
+def test_quantize_hypo_frac(with_round_half_even, value, quant):
     rn = Rational(value)
     adj = rn.quantize(quant)
     # compute equivalent Fraction
@@ -242,8 +233,9 @@ def test_quantize_incompat_quant_value(quant):
                           "0.00015",
                           Fraction(16, 3)),
                          ids=("compact", "large", "less1", "fraction"))
-@pytest.mark.parametrize("prec", (0, -1, -3, 4), ids=lambda p: str(p))
-def test_round_to_prec(value, prec):
+@pytest.mark.parametrize("prec", (31, 4, 2, 0, -1, -3, -20),
+                         ids=lambda p: str(p))
+def test_round_to_prec_exam(value, prec):
     rn = Rational(value)
     adj = round(rn, prec)
     assert isinstance(adj, Rational)
@@ -253,7 +245,7 @@ def test_round_to_prec(value, prec):
 
 @given(value=strategies.fractions(),
        prec=strategies.integers(min_value=-RN_MAX_PREC, max_value=RN_MAX_PREC))
-def test_round_to_prec_hypo(value, prec):
+def test_round_to_prec_hypo_frac(value, prec):
     rn = Rational(value)
     adj = round(rn, prec)
     assert isinstance(adj, Rational)
@@ -264,10 +256,10 @@ def test_round_to_prec_hypo(value, prec):
 @pytest.mark.parametrize("value",
                          ("-17.849",
                           ".".join(("1" * 3297, "4" * 33)),
-                          "0.00015",
+                          Fraction(52, 103),
                           "999999999999999999.67",),
                          ids=("compact", "large", "fraction", "carry",))
-def test_round_to_int(value):
+def test_round_to_int_exam(value):
     rn = Rational(value)
     adj = round(rn)
     assert isinstance(adj, int)
@@ -275,7 +267,7 @@ def test_round_to_int(value):
 
 
 @given(value=strategies.fractions())
-def test_round_to_int_hypo(value):
+def test_round_to_int_hypo_frac(value):
     rn = Rational(value)
     adj = round(rn)
     assert isinstance(adj, int)

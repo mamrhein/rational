@@ -21,6 +21,7 @@ $Revision$
 typedef unsigned __int128 uint128_t;
 
 static const uint128_t UINT128_ZERO = 0ULL;
+static const uint128_t UINT128_ONE = 1ULL;
 static const uint128_t UINT128_MAX =
     ((uint128_t)UINT64_MAX << 64U) + UINT64_MAX;
 

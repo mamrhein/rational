@@ -325,7 +325,21 @@ rnd_cmp(uint128_t x_coeff, rn_exp_t x_exp, uint128_t y_coeff, rn_exp_t y_exp) {
 static inline error_t
 rnd_adjust_coeff_exp(uint128_t *coeff, rn_exp_t *exp, bool neg,
                      rn_prec_t to_prec, enum RN_ROUNDING_MODE rounding_mode) {
+    assert(!U128_EQ_ZERO(coeff));
     int sh = -(to_prec + *exp);
+
+    if (sh > U128_MAGNITUDE(*coeff) + 1) {
+        // coeff * 10 ^ exp < 10 ^ to_prec / 2
+        if (u64_delta_rounded(neg, rounding_mode) == 0) {
+            *coeff = UINT128_ZERO;
+            *exp = 0;
+        }
+        else {
+            *coeff = UINT128_ONE;
+            *exp = -to_prec;
+        }
+        return 0;
+    }
 
     if (sh > UINT64_10_POW_N_CUTOFF)
         return -1;
